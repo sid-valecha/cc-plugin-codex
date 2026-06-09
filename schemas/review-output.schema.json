@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "required": [
+    "findings",
+    "summary"
+  ],
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "summary": {
+      "type": "string"
+    }
+  }
+}

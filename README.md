@@ -63,7 +63,33 @@ Rescue defaults to model `sonnet`, standard noninteractive Claude mode, and perm
 
 Job state is stored under `PLUGIN_DATA`, `CODEX_PLUGIN_DATA`, `CLAUDE_PLUGIN_DATA`, or `~/.codex/plugins/data/claude-code` in that order. Use `--state-dir <path>` for tests or custom local installs.
 
-Future skills such as review, hooks, and worktree workflows are intentionally not implemented yet.
+Future skills such as adversarial review, hooks, and worktree workflows are intentionally not implemented yet.
+
+Run a structured read-only review:
+
+```bash
+node scripts/claude-companion.mjs review
+```
+
+Review a branch diff:
+
+```bash
+node scripts/claude-companion.mjs review --base main
+```
+
+Review uses `git diff`, Claude one-shot JSON output, `--permission-mode plan`, and `schemas/review-output.schema.json`. It returns structured findings and does not edit files.
+
+Run a stricter adversarial review with the same engine:
+
+```bash
+node scripts/claude-companion.mjs adversarial-review --base main
+```
+
+You can also use:
+
+```bash
+node scripts/claude-companion.mjs review --adversarial --base main
+```
 
 ## Development
 

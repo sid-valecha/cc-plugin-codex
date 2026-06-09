@@ -57,6 +57,8 @@ function parseArgs(argv) {
     help: false,
     prompt: null,
     cwd: null,
+    base: null,
+    schema: null,
     model: null,
     permissionMode: null,
     stateDir: null,
@@ -67,7 +69,8 @@ function parseArgs(argv) {
     danger: false,
     plan: false,
     background: false,
-    bare: false
+    bare: false,
+    adversarial: false
   };
   let command = null;
   const rest = [];
@@ -89,6 +92,16 @@ function parseArgs(argv) {
     }
     if (arg === "--cwd") {
       options.cwd = readOptionValue(argv, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === "--base") {
+      options.base = readOptionValue(argv, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === "--schema") {
+      options.schema = readOptionValue(argv, index, arg);
       index += 1;
       continue;
     }
@@ -142,6 +155,10 @@ function parseArgs(argv) {
       options.bare = true;
       continue;
     }
+    if (arg === "--adversarial") {
+      options.adversarial = true;
+      continue;
+    }
     if (command === null) {
       command = arg;
       continue;
@@ -170,6 +187,9 @@ function usage() {
     "  status    List active and recent Claude jobs.",
     "  result    Show the latest or selected Claude job result.",
     "  cancel    Cancel a running Claude job.",
+    "  review    Run a structured read-only Claude review.",
+    "  adversarial-review",
+    "           Run a stricter structured read-only Claude review.",
     "",
     "Options:",
     "  --json                  Emit machine-readable JSON.",
@@ -188,7 +208,12 @@ function usage() {
     "",
     "Job options:",
     "  --job-id <id>           Select a specific job for result or cancel.",
-    "  --limit <n>             Limit status output. Defaults to 20."
+    "  --limit <n>             Limit status output. Defaults to 20.",
+    "",
+    "Review options:",
+    "  --base <ref>            Review git diff from <ref>...HEAD.",
+    "  --schema <path>         Override review JSON schema path.",
+    "  --adversarial           Use the stricter adversarial review prompt."
   ].join("\n");
 }
 
@@ -1124,6 +1149,281 @@ function sanitizeJob(job) {
   return safeJob;
 }
 
+function runCommand(command, args, { cwd, input = null } = {}) {
+  return new Promise((resolve) => {
+    const stdoutChunks = [];
+    const stderrChunks = [];
+    let child;
+
+    try {
+      child = spawn(command, args, {
+        cwd,
+        stdio: [input === null ? "ignore" : "pipe", "pipe", "pipe"]
+      });
+    } catch (error) {
+      resolve({
+        ok: false,
+        status: error.code === "ENOENT" ? "missing" : "failed",
+        stdout: "",
+        stderr: error.message,
+        exitCode: null,
+        signal: null,
+        command: [command, ...args]
+      });
+      return;
+    }
+
+    child.stdout.on("data", (chunk) => stdoutChunks.push(chunk));
+    child.stderr.on("data", (chunk) => stderrChunks.push(chunk));
+    child.on("error", (error) => {
+      resolve({
+        ok: false,
+        status: error.code === "ENOENT" ? "missing" : "failed",
+        stdout: Buffer.concat(stdoutChunks).toString("utf8"),
+        stderr: error.message,
+        exitCode: null,
+        signal: null,
+        command: [command, ...args]
+      });
+    });
+    child.on("close", (exitCode, signal) => {
+      resolve({
+        ok: exitCode === 0,
+        status: exitCode === 0 ? "completed" : "failed",
+        stdout: Buffer.concat(stdoutChunks).toString("utf8"),
+        stderr: Buffer.concat(stderrChunks).toString("utf8"),
+        exitCode,
+        signal,
+        command: [command, ...args]
+      });
+    });
+
+    if (input !== null) {
+      child.stdin.end(input);
+    }
+  });
+}
+
+function defaultReviewSchemaPath() {
+  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "schemas", "review-output.schema.json");
+}
+
+async function collectGitDiff({ cwd, base }) {
+  const args = base ? ["diff", "--no-ext-diff", `${base}...HEAD`] : ["diff", "--no-ext-diff"];
+  const result = await runCommand("git", args, { cwd });
+  if (!result.ok) {
+    throw new Error(`Failed to collect git diff: ${firstLine(result.stderr) || firstLine(result.stdout)}`);
+  }
+  return {
+    diff: result.stdout,
+    command: result.command
+  };
+}
+
+async function loadReviewSchema(schemaPath) {
+  const resolvedPath = path.resolve(schemaPath ?? defaultReviewSchemaPath());
+  return {
+    path: resolvedPath,
+    schema: JSON.parse(await readFile(resolvedPath, "utf8"))
+  };
+}
+
+function buildReviewPrompt({ diff, base, mode = "review" }) {
+  const target = base ? `the diff from ${base}...HEAD` : "the uncommitted working tree diff";
+  const basePrompt = [
+    `Review ${target} and return structured output.`,
+    "",
+    "Each finding must include: title, severity, file, line, description, recommendation.",
+    "Severity must be one of: critical, high, medium, low, info.",
+    "Only report actionable correctness, regression, security, data loss, or missing-test risks.",
+    "",
+    "Diff:",
+    diff
+  ];
+
+  if (mode === "adversarial-review") {
+    return [
+      `Adversarially review ${target} and return structured output.`,
+      "",
+      "Each finding object must include title, severity, file, line, description, and recommendation.",
+      "Severity must be one of: critical, high, medium, low, info.",
+      "Look for subtle concrete failure modes and weak assumptions. Do not invent issues.",
+      "",
+      "Diff:",
+      diff
+    ].join("\n");
+  }
+
+  return basePrompt.join("\n");
+}
+
+async function runClaudeReview({ cwd, prompt, model, schema }) {
+  const args = [
+    "-p",
+    "--output-format",
+    "json",
+    "--json-schema",
+    JSON.stringify(schema),
+    "--permission-mode",
+    "plan",
+    "--model",
+    model,
+    prompt
+  ];
+  return runCommand("claude", args, { cwd });
+}
+
+function parseReviewResponse(stdout) {
+  let payload;
+  try {
+    payload = JSON.parse(stdout);
+  } catch {
+    throw new Error("Claude review output was not valid JSON");
+  }
+  if (!payload || typeof payload !== "object") {
+    throw new Error("Claude review output must be a JSON object");
+  }
+  const structuredOutput = payload.structured_output;
+  if (!Object.hasOwn(payload, "structured_output")) {
+    throw new Error("Claude review output did not include structured_output");
+  }
+  if (structuredOutput === null) {
+    throw new Error("Claude review structured_output was null");
+  }
+  if (!structuredOutput || typeof structuredOutput !== "object" || Array.isArray(structuredOutput)) {
+    throw new Error("Claude review structured_output must be an object");
+  }
+  validateReviewOutput(structuredOutput);
+  return {
+    raw: payload,
+    structuredOutput
+  };
+}
+
+function validateReviewOutput(output) {
+  const errors = [];
+  if (!Array.isArray(output.findings)) {
+    errors.push("findings must be an array");
+  }
+  if (typeof output.summary !== "string") {
+    errors.push("summary must be a string");
+  }
+  if (Array.isArray(output.findings)) {
+    for (const [index, finding] of output.findings.entries()) {
+      validateFinding(finding, index, errors);
+    }
+  }
+  if (errors.length > 0) {
+    throw new Error(`Claude review structured output failed schema validation: ${errors.join("; ")}`);
+  }
+}
+
+function validateFinding(finding, index, errors) {
+  if (!finding || typeof finding !== "object" || Array.isArray(finding)) {
+    errors.push(`findings[${index}] must be an object`);
+    return;
+  }
+  for (const field of ["title", "severity", "file", "description", "recommendation"]) {
+    if (typeof finding[field] !== "string" || !finding[field].trim()) {
+      errors.push(`findings[${index}].${field} must be a non-empty string`);
+    }
+  }
+  if (!["critical", "high", "medium", "low", "info"].includes(finding.severity)) {
+    errors.push(`findings[${index}].severity is invalid`);
+  }
+  if (finding.line !== null && (!Number.isInteger(finding.line) || finding.line < 1)) {
+    errors.push(`findings[${index}].line must be an integer >= 1 or null`);
+  }
+}
+
+async function runReview(options) {
+  const cwd = await resolveCwd(options.cwd);
+  const model = normalizeModel(options.model);
+  const mode = options.adversarial ? "adversarial-review" : "review";
+  const diffResult = await collectGitDiff({ cwd, base: options.base });
+  if (!diffResult.diff.trim()) {
+    return {
+      ok: true,
+      status: "empty_diff",
+      mode,
+      cwd,
+      base: options.base,
+      model,
+      findings: [],
+      summary: options.base
+        ? `No changes found in diff ${options.base}...HEAD.`
+        : "No uncommitted changes found to review.",
+      diffCommand: diffResult.command
+    };
+  }
+
+  const { path: schemaPath, schema } = await loadReviewSchema(options.schema);
+  const prompt = buildReviewPrompt({
+    diff: diffResult.diff,
+    base: options.base,
+    mode
+  });
+  const invocation = await runClaudeReview({
+    cwd,
+    prompt,
+    model,
+    schema
+  });
+  if (!invocation.ok) {
+    throw new Error(`Claude review failed: ${summarizeClaudeFailure(invocation)}`);
+  }
+  const parsed = parseReviewResponse(invocation.stdout);
+  return {
+    ok: true,
+    status: "completed",
+    mode,
+    cwd,
+    base: options.base,
+    model,
+    permissionMode: "plan",
+    schemaPath,
+    diffCommand: diffResult.command,
+    command: invocation.command,
+    findings: parsed.structuredOutput.findings,
+    summary: parsed.structuredOutput.summary,
+    raw: parsed.raw
+  };
+}
+
+function summarizeClaudeFailure(invocation) {
+  try {
+    const payload = JSON.parse(invocation.stdout);
+    if (typeof payload.result === "string" && payload.result.trim()) {
+      return payload.result.trim();
+    }
+    if (payload.api_error_status) {
+      return `Claude API error ${payload.api_error_status}`;
+    }
+  } catch {
+    // Fall through to plain output summaries.
+  }
+  return firstLine(invocation.stderr) || firstLine(invocation.stdout) || "unknown Claude error";
+}
+
+function renderHumanReview(result) {
+  if (result.status === "empty_diff") {
+    return result.summary;
+  }
+  const lines = [result.summary || "Claude review completed."];
+  if (result.findings.length === 0) {
+    lines.push("", "No findings.");
+    return lines.join("\n");
+  }
+  for (const finding of result.findings) {
+    const location = finding.line === null ? finding.file : `${finding.file}:${finding.line}`;
+    lines.push("", `[${finding.severity}] ${finding.title}`, `${location}`, finding.description);
+    if (finding.recommendation) {
+      lines.push(`Recommendation: ${finding.recommendation}`);
+    }
+  }
+  return lines.join("\n");
+}
+
 async function main() {
   const { command, options } = parseArgs(process.argv.slice(2));
 
@@ -1178,6 +1478,19 @@ async function main() {
       console.log(JSON.stringify(result, null, 2));
     } else {
       console.log(renderHumanCancel(result));
+    }
+    process.exit(result.ok ? 0 : 1);
+  }
+
+  if (command === "review" || command === "adversarial-review") {
+    if (command === "adversarial-review") {
+      options.adversarial = true;
+    }
+    const result = await runReview(options);
+    if (options.json) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log(renderHumanReview(result));
     }
     process.exit(result.ok ? 0 : 1);
   }
