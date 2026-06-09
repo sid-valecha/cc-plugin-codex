@@ -1,6 +1,6 @@
 # Claude Code Companion for Codex
 
-This repository contains a Codex plugin that lets Codex use Claude Code as a local guest subprocess. The current implementation covers Milestone 0 and Milestone 0.5 only: plugin scaffold plus setup diagnostics.
+This repository contains a Codex plugin that lets Codex use Claude Code as a local guest subprocess. The current implementation includes setup diagnostics, foreground rescue, managed background rescue jobs, structured review, and adversarial review.
 
 ## Quickstart
 
@@ -38,6 +38,11 @@ The initial user-facing skill is:
 
 - `claude-setup`: diagnose local Claude Code installation and auth without sending a prompt to Claude.
 - `claude-rescue`: delegate a foreground task to Claude Code through headless stream-json mode.
+- `claude-status`: list active and recent background Claude jobs.
+- `claude-result`: read the latest or selected Claude job result.
+- `claude-cancel`: cancel a running Claude job.
+- `claude-review`: run a structured, read-only Claude Code review.
+- `claude-adversarial-review`: run a stricter read-only review over the same schema.
 
 Run a foreground rescue task:
 
@@ -78,6 +83,12 @@ node scripts/claude-companion.mjs review --base main
 ```
 
 Review uses `git diff`, Claude one-shot JSON output, `--permission-mode plan`, and `schemas/review-output.schema.json`. It returns structured findings and does not edit files.
+
+Review refuses diffs larger than 200000 bytes by default so a single accidental large diff is not sent to Claude. Narrow the diff with `--base`, split the change, or explicitly raise the limit:
+
+```bash
+node scripts/claude-companion.mjs review --base main --max-diff-bytes 500000
+```
 
 Run a stricter adversarial review with the same engine:
 

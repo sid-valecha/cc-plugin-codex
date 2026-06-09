@@ -42,6 +42,10 @@ async function makeFakeClaudeBin() {
       "  message)",
       "    echo '{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"Message final\"}]}}'",
       "    ;;",
+      "  nested-delta)",
+      "    echo '{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"delta\":{\"text\":\"Nested \"}}}'",
+      "    echo '{\"type\":\"stream_event\",\"stream_event\":{\"event\":{\"type\":\"content_block_delta\",\"delta\":{\"text\":\"delta\"}}}}'",
+      "    ;;",
       "  empty)",
       "    ;;",
       "  *)",
@@ -211,6 +215,22 @@ test("rescue extracts assistant message content arrays", async () => {
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.ok, true);
   assert.equal(payload.result, "Message final");
+});
+
+test("rescue extracts nested Claude stream deltas", async () => {
+  const binDir = await makeFakeClaudeBin();
+
+  const result = await runCli(["rescue", "--prompt", "Summarize", "--json"], {
+    binDir,
+    env: {
+      FAKE_CLAUDE_STREAM: "nested-delta"
+    }
+  });
+
+  assert.equal(result.exitCode, 0);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.ok, true);
+  assert.equal(payload.result, "Nested delta");
 });
 
 test("rescue maps danger permission mode", async () => {
