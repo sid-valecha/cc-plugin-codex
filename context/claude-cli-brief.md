@@ -2,10 +2,11 @@
 
 ## Canonical Embed Invocation
 
-Use this shape for streaming task delegation:
+Use this shape for streaming task delegation by default. It keeps Claude in
+noninteractive print mode while allowing Claude subscription auth:
 
 ```bash
-claude --bare -p \
+claude -p \
   --input-format stream-json \
   --output-format stream-json \
   --verbose \
@@ -18,12 +19,16 @@ claude --bare -p \
 
 Why these flags matter:
 
-- `--bare`: prevents inheriting user Claude hooks, plugins, MCP config, memory, and project discovery.
 - `-p`: noninteractive print/headless mode.
 - `--input-format stream-json`: accepts newline-delimited JSON on stdin.
 - `--output-format stream-json`: emits newline-delimited JSON events on stdout.
 - `--include-partial-messages`: streams text deltas.
 - `--include-hook-events`: exposes hook lifecycle events in the stream.
+
+Use `--bare` only as an explicit strict-isolation option. Claude Code help says
+bare mode does not read OAuth/keychain auth, so it requires bare-compatible auth
+such as `claude setup-token`, `ANTHROPIC_API_KEY`, provider credentials, or
+`apiKeyHelper`.
 
 ## Structured Review Invocation
 
@@ -48,8 +53,8 @@ Do not combine `--json-schema` with stream-json mode. If streaming wins, schema 
 
 Initial plugin defaults:
 
-- default permission mode: `plan`
-- `--write`: `acceptEdits`
+- default permission mode: `acceptEdits`
+- `--plan`: `plan`
 - `--danger`: `bypassPermissions`
 
 ## Model Mapping
@@ -108,7 +113,8 @@ claude auth status --text
 
 Auth/install hints:
 
-- `claude auth login`
+- `claude auth login --claudeai`
+- `claude setup-token`
 - `ANTHROPIC_API_KEY`
 - `CLAUDE_CODE_USE_BEDROCK=1`
 - `CLAUDE_CODE_USE_VERTEX=1`

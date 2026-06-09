@@ -29,9 +29,12 @@ Useful options:
 
 - `--cwd <path>` to run Claude from a specific working directory.
 - `--model <model>` to choose a Claude model. The default is `sonnet`; `spark` maps to `haiku`.
-- `--write` to allow Claude Code edits with `acceptEdits`.
+- `--plan` to use read-only `plan` permission mode.
+- `--write` to force Claude Code edits with `acceptEdits`, which is also the default for rescue.
+- `--permission-mode auto` to use Claude Code's automatic permission classifier.
 - `--danger` to use `bypassPermissions` only when the user explicitly accepts that risk.
 - `--permission-mode <mode>` for an explicit Claude Code permission mode.
 - `--session-id <uuid>` when continuing a known Claude session.
+- `--bare` for strict isolation when using `claude setup-token`, `ANTHROPIC_API_KEY`, Bedrock, Vertex, or `apiKeyHelper`.
 
 This milestone is foreground-only. Do not use `--background`, status, result, or cancel flows yet.

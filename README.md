@@ -30,7 +30,7 @@ npm install -g @anthropic-ai/claude-code
 claude install stable
 ```
 
-If auth is missing, use `claude auth login`, `ANTHROPIC_API_KEY`, Bedrock with `CLAUDE_CODE_USE_BEDROCK=1`, Vertex with `CLAUDE_CODE_USE_VERTEX=1`, or Claude Code `apiKeyHelper`.
+If auth is missing, use `claude auth login --claudeai` for Claude subscription accounts. For strict `--bare` mode, use `claude setup-token`, `ANTHROPIC_API_KEY`, Bedrock with `CLAUDE_CODE_USE_BEDROCK=1`, Vertex with `CLAUDE_CODE_USE_VERTEX=1`, or Claude Code `apiKeyHelper`.
 
 ## Codex Skill
 
@@ -45,7 +45,7 @@ Run a foreground rescue task:
 node scripts/claude-companion.mjs rescue --prompt "Inspect the failing test and suggest a fix"
 ```
 
-Rescue defaults to model `sonnet` and permission mode `plan`. Use `--model spark` to map to `haiku`, `--write` to allow `acceptEdits`, and `--danger` only when `bypassPermissions` is explicitly intended.
+Rescue defaults to model `sonnet`, standard noninteractive Claude mode, and permission mode `acceptEdits`. Use `--plan` for read-only planning, `--model spark` to map to `haiku`, `--permission-mode auto` for Claude's auto permission classifier, and `--danger` only when `bypassPermissions` is explicitly intended. Use `--bare` only when you want strict isolation and have bare-compatible auth such as `claude setup-token`, `ANTHROPIC_API_KEY`, provider credentials, or `apiKeyHelper`.
 
 Future skills such as status, result, cancel, review, hooks, and worktree workflows are intentionally not implemented yet. Background rescue jobs start in Milestone 1.5.
 

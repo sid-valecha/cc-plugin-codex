@@ -84,7 +84,7 @@ function runCli(args, { binDir, env = {} }) {
   });
 }
 
-test("rescue invokes Claude with bare stream-json flags and user prompt", async () => {
+test("rescue invokes Claude with stream-json flags and user prompt", async () => {
   const binDir = await makeFakeClaudeBin();
   const workDir = await mkdtemp(path.join(tmpdir(), "claude-rescue-cwd-"));
   const argsFile = path.join(workDir, "args.txt");
@@ -122,11 +122,11 @@ test("rescue invokes Claude with bare stream-json flags and user prompt", async 
   assert.equal(payload.cwd, workDir);
   assert.equal(payload.model, "haiku");
   assert.equal(payload.permissionMode, "acceptEdits");
+  assert.equal(payload.isolation, "standard");
   assert.equal(payload.sessionId, "session-123");
 
   const claudeArgs = (await readFile(argsFile, "utf8")).trim().split("\n");
   assert.deepEqual(claudeArgs, [
-    "--bare",
     "-p",
     "--input-format",
     "stream-json",
@@ -146,8 +146,37 @@ test("rescue invokes Claude with bare stream-json flags and user prompt", async 
   const stdinLine = (await readFile(stdinFile, "utf8")).trim();
   assert.deepEqual(JSON.parse(stdinLine), {
     type: "user",
-    content: "Fix the failing test"
+    message: {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: "Fix the failing test"
+        }
+      ]
+    }
   });
+});
+
+test("rescue supports bare isolation mode when requested", async () => {
+  const binDir = await makeFakeClaudeBin();
+  const workDir = await mkdtemp(path.join(tmpdir(), "claude-rescue-cwd-"));
+  const argsFile = path.join(workDir, "args.txt");
+
+  const result = await runCli(["rescue", "--prompt", "Do the task", "--bare", "--json"], {
+    binDir,
+    env: {
+      FAKE_CLAUDE_ARGS_FILE: argsFile
+    }
+  });
+
+  assert.equal(result.exitCode, 0);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.isolation, "bare");
+
+  const claudeArgs = (await readFile(argsFile, "utf8")).trim().split("\n");
+  assert.equal(claudeArgs[0], "--bare");
+  assert.equal(claudeArgs[1], "-p");
 });
 
 test("rescue tolerates malformed lines and unknown stream events", async () => {
@@ -194,6 +223,18 @@ test("rescue maps danger permission mode", async () => {
   assert.equal(result.exitCode, 0);
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.permissionMode, "bypassPermissions");
+});
+
+test("rescue supports plan permission mode", async () => {
+  const binDir = await makeFakeClaudeBin();
+
+  const result = await runCli(["rescue", "--prompt", "Inspect only", "--plan", "--json"], {
+    binDir
+  });
+
+  assert.equal(result.exitCode, 0);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.permissionMode, "plan");
 });
 
 test("rescue rejects missing prompt before invoking Claude", async () => {

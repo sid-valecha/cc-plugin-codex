@@ -13,7 +13,8 @@ Before implementing:
 Hard rules:
 
 - Use Codex skills, not slash commands, as the user-facing plugin surface.
-- Use `claude --bare` for all plugin-managed Claude invocations.
+- Use Claude Code noninteractive `-p` for all plugin-managed Claude invocations.
+- Use `--bare` only when strict isolation is explicitly requested and bare-compatible auth is available.
 - Treat Claude as an NDJSON subprocess, not a JSON-RPC server.
 - Maintain plugin-owned job state instead of relying on `~/.claude/projects` for status/result.
 - Do not introduce a broker/multiplexer before the core job runner is stable.

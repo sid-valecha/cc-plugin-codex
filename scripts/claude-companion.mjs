@@ -14,7 +14,8 @@ const INSTALL_GUIDANCE = [
 ];
 
 const AUTH_GUIDANCE = [
-  "Authenticate interactively with `claude auth login`.",
+  "Authenticate interactively with `claude auth login --claudeai` for Claude subscription accounts.",
+  "Run `claude setup-token` for long-lived subscription auth in strict bare mode.",
   "Or set `ANTHROPIC_API_KEY` for API-key auth.",
   "For Amazon Bedrock, set `CLAUDE_CODE_USE_BEDROCK=1` and configure AWS credentials.",
   "For Google Vertex AI, set `CLAUDE_CODE_USE_VERTEX=1` and configure GCP credentials.",
@@ -31,7 +32,8 @@ const AUTH_PROBE_TIMEOUT_GUIDANCE = [
 
 const DEFAULT_RESCUE_MODEL = "sonnet";
 const MODEL_ALIASES = new Map([["spark", "haiku"]]);
-const DEFAULT_PERMISSION_MODE = "plan";
+const DEFAULT_PERMISSION_MODE = "acceptEdits";
+const PLAN_PERMISSION_MODE = "plan";
 const WRITE_PERMISSION_MODE = "acceptEdits";
 const DANGER_PERMISSION_MODE = "bypassPermissions";
 const VALID_PERMISSION_MODES = new Set([
@@ -39,7 +41,8 @@ const VALID_PERMISSION_MODES = new Set([
   "acceptEdits",
   "bypassPermissions",
   "default",
-  "auto"
+  "auto",
+  "dontAsk"
 ]);
 
 function parseArgs(argv) {
@@ -53,7 +56,9 @@ function parseArgs(argv) {
     sessionId: null,
     write: false,
     danger: false,
-    background: false
+    plan: false,
+    background: false,
+    bare: false
   };
   let command = null;
   const rest = [];
@@ -101,8 +106,16 @@ function parseArgs(argv) {
       options.danger = true;
       continue;
     }
+    if (arg === "--plan") {
+      options.plan = true;
+      continue;
+    }
     if (arg === "--background") {
       options.background = true;
+      continue;
+    }
+    if (arg === "--bare") {
+      options.bare = true;
       continue;
     }
     if (command === null) {
@@ -138,10 +151,12 @@ function usage() {
     "",
     "Rescue options:",
     "  --prompt <text>         Task prompt to send to Claude.",
-    "  --write                 Use acceptEdits permission mode.",
+    "  --plan                  Use read-only plan permission mode.",
+    "  --write                 Use acceptEdits permission mode. This is the default.",
     "  --danger                Use bypassPermissions permission mode.",
     "  --permission-mode <m>   Explicit Claude permission mode.",
-    "  --session-id <uuid>     Explicit Claude session id for continuity."
+    "  --session-id <uuid>     Explicit Claude session id for continuity.",
+    "  --bare                  Use Claude bare mode for API-key/helper/provider auth."
   ].join("\n");
 }
 
@@ -379,6 +394,9 @@ function normalizeModel(model) {
 
 function resolvePermissionMode(options) {
   let permissionMode = options.permissionMode ?? DEFAULT_PERMISSION_MODE;
+  if (options.plan) {
+    permissionMode = PLAN_PERMISSION_MODE;
+  }
   if (options.write) {
     permissionMode = WRITE_PERMISSION_MODE;
   }
@@ -409,9 +427,9 @@ async function resolveCwd(rawCwd) {
   return cwd;
 }
 
-function buildRescueArgs({ model, permissionMode, sessionId }) {
+function buildRescueArgs({ bare, model, permissionMode, sessionId }) {
   return [
-    "--bare",
+    ...(bare ? ["--bare"] : []),
     "-p",
     "--input-format",
     "stream-json",
@@ -429,8 +447,8 @@ function buildRescueArgs({ model, permissionMode, sessionId }) {
   ];
 }
 
-function runClaudeRescue({ cwd, prompt, model, permissionMode, sessionId }) {
-  const args = buildRescueArgs({ model, permissionMode, sessionId });
+function runClaudeRescue({ bare, cwd, prompt, model, permissionMode, sessionId }) {
+  const args = buildRescueArgs({ bare, model, permissionMode, sessionId });
   return new Promise((resolve) => {
     const stdoutChunks = [];
     const stderrChunks = [];
@@ -488,8 +506,23 @@ function runClaudeRescue({ cwd, prompt, model, permissionMode, sessionId }) {
       });
     });
 
-    child.stdin.end(`${JSON.stringify({ type: "user", content: prompt })}\n`);
+    child.stdin.end(`${JSON.stringify(createUserStreamEvent(prompt))}\n`);
   });
+}
+
+function createUserStreamEvent(prompt) {
+  return {
+    type: "user",
+    message: {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: prompt
+        }
+      ]
+    }
+  };
 }
 
 async function runRescue(options) {
@@ -505,6 +538,7 @@ async function runRescue(options) {
   const sessionId = options.sessionId?.trim() || randomUUID();
   const cwd = await resolveCwd(options.cwd);
   const invocation = await runClaudeRescue({
+    bare: options.bare,
     cwd,
     prompt: options.prompt,
     model,
@@ -521,6 +555,7 @@ async function runRescue(options) {
     cwd,
     model,
     permissionMode,
+    isolation: options.bare ? "bare" : "standard",
     sessionId,
     command: ["claude", ...invocation.args],
     exitCode: invocation.exitCode,

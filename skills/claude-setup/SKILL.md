@@ -35,7 +35,8 @@ claude install stable
 
 If Claude Code is unauthenticated, guide the user to use one of:
 
-- `claude auth login`
+- `claude auth login --claudeai` for Claude subscription accounts
+- `claude setup-token` for long-lived subscription auth in strict bare mode
 - `ANTHROPIC_API_KEY`
 - `CLAUDE_CODE_USE_BEDROCK=1` with AWS credentials
 - `CLAUDE_CODE_USE_VERTEX=1` with GCP credentials

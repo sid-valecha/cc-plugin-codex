@@ -31,10 +31,13 @@ Later skills:
 
 ## Core Architecture
 
-Claude should always be embedded through headless noninteractive mode:
+Claude should be embedded through headless noninteractive mode. Default rescue to
+standard noninteractive mode so Claude subscription auth works. Offer `--bare` as
+an explicit strict-isolation option for API-key, provider, `setup-token`, or
+`apiKeyHelper` auth:
 
 ```bash
-claude --bare -p \
+claude -p \
   --input-format stream-json \
   --output-format stream-json \
   --verbose \
@@ -58,7 +61,8 @@ Important design rules:
 
 - Do not implement Codex slash commands. Codex plugins expose reusable workflows through skills.
 - Do not build a JSON-RPC client for Claude. Claude Code headless mode is newline-delimited JSON over stdin/stdout.
-- Use `--bare` for every plugin-managed Claude invocation.
+- Use noninteractive `-p` for every plugin-managed Claude invocation.
+- Use `--bare` only when strict isolation is requested and bare-compatible auth is available.
 - Maintain our own job index instead of using `~/.claude/projects` as the primary source of truth.
 - Treat unknown Claude stream event types as no-ops.
 - Prefer a small, tested background job runner over a broker/multiplexer in early phases.
@@ -170,8 +174,8 @@ Defaults:
 
 - model: `sonnet`
 - `spark` alias: `haiku`
-- permission mode: `plan`
-- `--write`: `acceptEdits`
+- permission mode: `acceptEdits`
+- `--plan`: `plan`
 - `--danger`: `bypassPermissions`
 
 Exit criteria:
