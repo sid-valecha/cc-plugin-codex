@@ -31,5 +31,6 @@ Useful options:
 - `--base <ref>` to review `<ref>...HEAD`.
 - `--model <model>` to choose a Claude model. The default is `sonnet`; `spark` maps to `haiku`.
 - `--schema <path>` to override the review JSON schema.
+- `--max-diff-bytes <n>` to raise or lower the single-review diff limit. The default is 200000 bytes.
 
 Review always uses Claude Code `--permission-mode plan` and one-shot JSON output. It should not edit files.

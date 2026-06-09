@@ -26,6 +26,10 @@ async function makeFakeClaudeBin() {
       "if [ \"$FAKE_CLAUDE_STREAM\" = \"slow\" ]; then",
       "  /bin/sleep 10",
       "fi",
+      "if [ \"$FAKE_CLAUDE_STREAM\" = \"crash\" ]; then",
+      "  echo 'simulated Claude crash' >&2",
+      "  exit 17",
+      "fi",
       "echo '{\"type\":\"stream_event\",\"stream_event\":{\"delta\":{\"text\":\"Background \"}}}'",
       "echo '{\"type\":\"result\",\"result\":\"Background done\"}'",
       "exit 0",
@@ -144,6 +148,41 @@ test("cancel stops a running background rescue job", async () => {
 
   const job = await waitForJob(stateDir, jobId, (candidate) => candidate.status === "cancelled");
   assert.equal(job.summary, "Cancelled by user");
+});
+
+test("failed background rescue writes an actionable result", async () => {
+  const binDir = await makeFakeClaudeBin();
+  const stateDir = await mkdtemp(path.join(tmpdir(), "claude-jobs-state-"));
+
+  const start = await runCli(
+    [
+      "rescue",
+      "--prompt",
+      "Crash in the background",
+      "--background",
+      "--state-dir",
+      stateDir,
+      "--json"
+    ],
+    {
+      binDir,
+      env: {
+        FAKE_CLAUDE_STREAM: "crash"
+      }
+    }
+  );
+  assert.equal(start.exitCode, 0, start.stderr);
+  const jobId = JSON.parse(start.stdout).job.id;
+
+  const job = await waitForJob(stateDir, jobId, (candidate) => candidate.status === "failed");
+  assert.match(job.summary, /simulated Claude crash/);
+
+  const result = await runCli(["result", "--job-id", jobId, "--state-dir", stateDir, "--json"]);
+  assert.equal(result.exitCode, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.match(payload.result, /Claude rescue failed/);
+  assert.match(payload.result, /simulated Claude crash/);
+  assert.match(payload.result, /Exit code: 17/);
 });
 
 test("status marks stale running jobs as failed", async () => {

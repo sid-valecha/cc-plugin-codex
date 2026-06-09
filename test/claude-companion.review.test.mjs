@@ -184,6 +184,23 @@ test("review handles empty diffs without invoking Claude", async () => {
   assert.match(payload.summary, /No uncommitted changes/);
 });
 
+test("review refuses oversized diffs before invoking Claude", async () => {
+  const binDir = await makeFakeBin({ diff: "diff --git a/app.js b/app.js\n+" + "x".repeat(80) });
+  const tempDir = await mkdtemp(path.join(tmpdir(), "claude-review-"));
+  const argsFile = path.join(tempDir, "claude-args.txt");
+
+  const result = await runCli(["review", "--max-diff-bytes", "20", "--json"], {
+    binDir,
+    env: {
+      FAKE_CLAUDE_ARGS_FILE: argsFile
+    }
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.match(result.stderr, /Review diff is too large/);
+  await assert.rejects(readFile(argsFile, "utf8"), /ENOENT/);
+});
+
 test("review treats null structured_output as schema failure", async () => {
   const binDir = await makeFakeBin();
 

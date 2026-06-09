@@ -32,3 +32,5 @@ node scripts/claude-companion.mjs adversarial-review --base main --json
 ```
 
 This uses the same schema, diff collection, and JSON parsing as `claude-review`, but with a stricter prompt that challenges assumptions and looks for concrete failure modes. It always uses Claude Code `--permission-mode plan` and should not edit files.
+
+It also uses the same single-review diff limit as `claude-review`: 200000 bytes by default, configurable with `--max-diff-bytes <n>`.

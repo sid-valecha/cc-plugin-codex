@@ -38,6 +38,7 @@ const DEFAULT_PERMISSION_MODE = "acceptEdits";
 const PLAN_PERMISSION_MODE = "plan";
 const WRITE_PERMISSION_MODE = "acceptEdits";
 const DANGER_PERMISSION_MODE = "bypassPermissions";
+const DEFAULT_REVIEW_MAX_DIFF_BYTES = 200000;
 const VALID_PERMISSION_MODES = new Set([
   "plan",
   "acceptEdits",
@@ -70,7 +71,8 @@ function parseArgs(argv) {
     plan: false,
     background: false,
     bare: false,
-    adversarial: false
+    adversarial: false,
+    maxDiffBytes: DEFAULT_REVIEW_MAX_DIFF_BYTES
   };
   let command = null;
   const rest = [];
@@ -132,6 +134,11 @@ function parseArgs(argv) {
     }
     if (arg === "--session-id") {
       options.sessionId = readOptionValue(argv, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === "--max-diff-bytes") {
+      options.maxDiffBytes = Number.parseInt(readOptionValue(argv, index, arg), 10);
       index += 1;
       continue;
     }
@@ -213,6 +220,7 @@ function usage() {
     "Review options:",
     "  --base <ref>            Review git diff from <ref>...HEAD.",
     "  --schema <path>         Override review JSON schema path.",
+    "  --max-diff-bytes <n>    Refuse review diffs larger than n bytes. Defaults to 200000.",
     "  --adversarial           Use the stricter adversarial review prompt."
   ].join("\n");
 }
@@ -693,6 +701,9 @@ function extractTextFromEvent(event) {
     event.message?.content,
     event.stream_event?.delta?.text,
     event.stream_event?.text,
+    event.stream_event?.event?.delta?.text,
+    event.stream_event?.event?.text,
+    event.stream_event?.content_delta?.text,
     event.event?.delta?.text,
     event.event?.text
   ];
@@ -715,6 +726,7 @@ function extractFinalTextFromEvent(event) {
     event.message?.content,
     event.response?.content,
     event.stream_event?.message?.content,
+    event.stream_event?.event?.message?.content,
     event.event?.message?.content
   ];
 
@@ -968,10 +980,12 @@ async function runRescueJob(options) {
       : resultText
         ? summarizeResult(resultText)
         : firstLine(invocation.stderr);
+  const persistedResult =
+    resultText || (status === "failed" ? formatRescueFailure(invocation, stream) : "");
 
   await writeFile(job.logPath, invocation.stdout, "utf8");
   await writeFile(job.stderrPath, invocation.stderr, "utf8");
-  await writeFile(job.resultPath, resultText, "utf8");
+  await writeFile(job.resultPath, persistedResult, "utf8");
   await writeFile(
     job.sessionPath,
     `${JSON.stringify({ claudeSessionId: job.claudeSessionId, stream }, null, 2)}\n`,
@@ -984,6 +998,27 @@ async function runRescueJob(options) {
     signal: invocation.signal,
     summary
   });
+}
+
+function formatRescueFailure(invocation, stream) {
+  const lines = ["Claude rescue failed before producing a final assistant result."];
+  const reason = firstLine(invocation.stderr) || firstLine(invocation.stdout);
+  if (reason) {
+    lines.push("", `Reason: ${reason}`);
+  }
+  if (stream.malformedLineCount > 0) {
+    lines.push("", `Malformed Claude stream lines: ${stream.malformedLineCount}`);
+  }
+  if (invocation.exitCode !== null) {
+    lines.push(`Exit code: ${invocation.exitCode}`);
+  }
+  if (invocation.signal) {
+    lines.push(`Signal: ${invocation.signal}`);
+  }
+  if (invocation.stderr.trim()) {
+    lines.push("", "Claude stderr:", invocation.stderr.trim());
+  }
+  return `${lines.join("\n")}\n`;
 }
 
 async function runStatus(options) {
@@ -1340,7 +1375,12 @@ async function runReview(options) {
   const cwd = await resolveCwd(options.cwd);
   const model = normalizeModel(options.model);
   const mode = options.adversarial ? "adversarial-review" : "review";
+  const maxDiffBytes =
+    Number.isFinite(options.maxDiffBytes) && options.maxDiffBytes > 0
+      ? options.maxDiffBytes
+      : DEFAULT_REVIEW_MAX_DIFF_BYTES;
   const diffResult = await collectGitDiff({ cwd, base: options.base });
+  const diffBytes = Buffer.byteLength(diffResult.diff, "utf8");
   if (!diffResult.diff.trim()) {
     return {
       ok: true,
@@ -1353,8 +1393,15 @@ async function runReview(options) {
       summary: options.base
         ? `No changes found in diff ${options.base}...HEAD.`
         : "No uncommitted changes found to review.",
-      diffCommand: diffResult.command
+      diffCommand: diffResult.command,
+      diffBytes,
+      maxDiffBytes
     };
+  }
+  if (diffBytes > maxDiffBytes) {
+    throw new Error(
+      `Review diff is too large for a single Claude review (${diffBytes} bytes, limit ${maxDiffBytes}). Use --base to narrow the diff, commit or stage smaller chunks, or raise --max-diff-bytes if you explicitly want to send a larger diff.`
+    );
   }
 
   const { path: schemaPath, schema } = await loadReviewSchema(options.schema);
@@ -1383,6 +1430,8 @@ async function runReview(options) {
     permissionMode: "plan",
     schemaPath,
     diffCommand: diffResult.command,
+    diffBytes,
+    maxDiffBytes,
     command: invocation.command,
     findings: parsed.structuredOutput.findings,
     summary: parsed.structuredOutput.summary,
