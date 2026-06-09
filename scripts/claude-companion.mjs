@@ -1243,9 +1243,10 @@ async function runClaudeReview({ cwd, prompt, model, schema }) {
     "--permission-mode",
     "plan",
     "--model",
-    model
+    model,
+    prompt
   ];
-  return runCommand("claude", args, { cwd, input: prompt });
+  return runCommand("claude", args, { cwd });
 }
 
 function parseReviewResponse(stdout) {
@@ -1259,6 +1260,9 @@ function parseReviewResponse(stdout) {
     throw new Error("Claude review output must be a JSON object");
   }
   const structuredOutput = payload.structured_output;
+  if (!Object.hasOwn(payload, "structured_output")) {
+    throw new Error("Claude review output did not include structured_output");
+  }
   if (structuredOutput === null) {
     throw new Error("Claude review structured_output was null");
   }
@@ -1339,7 +1343,7 @@ async function runReview(options) {
     schema
   });
   if (!invocation.ok) {
-    throw new Error(`Claude review failed: ${firstLine(invocation.stderr) || firstLine(invocation.stdout)}`);
+    throw new Error(`Claude review failed: ${summarizeClaudeFailure(invocation)}`);
   }
   const parsed = parseReviewResponse(invocation.stdout);
   return {
@@ -1356,6 +1360,21 @@ async function runReview(options) {
     summary: parsed.structuredOutput.summary,
     raw: parsed.raw
   };
+}
+
+function summarizeClaudeFailure(invocation) {
+  try {
+    const payload = JSON.parse(invocation.stdout);
+    if (typeof payload.result === "string" && payload.result.trim()) {
+      return payload.result.trim();
+    }
+    if (payload.api_error_status) {
+      return `Claude API error ${payload.api_error_status}`;
+    }
+  } catch {
+    // Fall through to plain output summaries.
+  }
+  return firstLine(invocation.stderr) || firstLine(invocation.stdout) || "unknown Claude error";
 }
 
 function renderHumanReview(result) {

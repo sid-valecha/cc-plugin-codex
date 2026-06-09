@@ -36,13 +36,22 @@ async function makeFakeBin({ diff = "diff --git a/app.js b/app.js\n+buggy();\n" 
     [
       "#!/bin/sh",
       "if [ -n \"$FAKE_CLAUDE_ARGS_FILE\" ]; then printf '%s\\n' \"$@\" > \"$FAKE_CLAUDE_ARGS_FILE\"; fi",
-      "if [ -n \"$FAKE_CLAUDE_PROMPT_FILE\" ]; then /bin/cat > \"$FAKE_CLAUDE_PROMPT_FILE\"; else /bin/cat > /dev/null; fi",
+      "if [ -n \"$FAKE_CLAUDE_PROMPT_FILE\" ]; then",
+      "  last=''",
+      "  for arg in \"$@\"; do last=\"$arg\"; done",
+      "  printf '%s' \"$last\" > \"$FAKE_CLAUDE_PROMPT_FILE\"",
+      "fi",
+      "/bin/cat > /dev/null",
       "case \"$FAKE_CLAUDE_REVIEW\" in",
       "  null)",
       "    echo '{\"structured_output\":null}'",
       "    ;;",
       "  invalid)",
       "    echo '{\"structured_output\":{\"findings\":\"not-array\",\"summary\":42}}'",
+      "    ;;",
+      "  error)",
+      "    echo '{\"is_error\":true,\"api_error_status\":429,\"result\":\"session limit reached\"}'",
+      "    exit 1",
       "    ;;",
       "  *)",
       "    echo '{\"structured_output\":{\"findings\":[{\"title\":\"Missing guard\",\"severity\":\"high\",\"file\":\"app.js\",\"line\":1,\"description\":\"The new call lacks a guard.\",\"recommendation\":\"Add the missing guard before calling buggy().\"}],\"summary\":\"Found 1 issue.\"}}'",
@@ -158,4 +167,19 @@ test("review treats invalid structured output as schema failure", async () => {
 
   assert.equal(result.exitCode, 1);
   assert.match(result.stderr, /failed schema validation/);
+});
+
+test("review summarizes Claude JSON errors", async () => {
+  const binDir = await makeFakeBin();
+
+  const result = await runCli(["review", "--json"], {
+    binDir,
+    env: {
+      FAKE_CLAUDE_REVIEW: "error"
+    }
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.match(result.stderr, /session limit reached/);
+  assert.doesNotMatch(result.stderr, /api_error_status/);
 });
