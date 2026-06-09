@@ -1158,7 +1158,7 @@ function runCommand(command, args, { cwd, input = null } = {}) {
     try {
       child = spawn(command, args, {
         cwd,
-        stdio: ["pipe", "pipe", "pipe"]
+        stdio: [input === null ? "ignore" : "pipe", "pipe", "pipe"]
       });
     } catch (error) {
       resolve({
@@ -1198,7 +1198,9 @@ function runCommand(command, args, { cwd, input = null } = {}) {
       });
     });
 
-    child.stdin.end(input ?? "");
+    if (input !== null) {
+      child.stdin.end(input);
+    }
   });
 }
 
@@ -1229,12 +1231,11 @@ async function loadReviewSchema(schemaPath) {
 function buildReviewPrompt({ diff, base, mode = "review" }) {
   const target = base ? `the diff from ${base}...HEAD` : "the uncommitted working tree diff";
   const basePrompt = [
-    `Review ${target}.`,
+    `Review ${target} and return structured output.`,
     "",
-    "Return only findings that are actionable defects or meaningful risks.",
-    "Prioritize correctness, regressions, data loss, security, and missing tests.",
-    "Do not report style-only issues unless they hide a real bug.",
-    "Use file paths and line numbers from the diff when possible.",
+    "Each finding must include: title, severity, file, line, description, recommendation.",
+    "Severity must be one of: critical, high, medium, low, info.",
+    "Only report actionable correctness, regression, security, data loss, or missing-test risks.",
     "",
     "Diff:",
     diff
@@ -1242,13 +1243,11 @@ function buildReviewPrompt({ diff, base, mode = "review" }) {
 
   if (mode === "adversarial-review") {
     return [
-      `Adversarially review ${target}.`,
+      `Adversarially review ${target} and return structured output.`,
       "",
-      "Assume the change may contain subtle defects and look for the strongest concrete failure modes.",
-      "Challenge optimistic assumptions, especially around process lifecycle, permissions, state persistence, schema handling, and user-visible behavior.",
-      "Return only actionable findings with defensible evidence from the diff.",
-      "Do not invent issues; if the diff is sound, return an empty findings array.",
-      "Use file paths and line numbers from the diff when possible.",
+      "Each finding object must include title, severity, file, line, description, and recommendation.",
+      "Severity must be one of: critical, high, medium, low, info.",
+      "Look for subtle concrete failure modes and weak assumptions. Do not invent issues.",
       "",
       "Diff:",
       diff

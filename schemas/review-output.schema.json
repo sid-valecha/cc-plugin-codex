@@ -1,8 +1,5 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Claude Companion Review Output",
   "type": "object",
-  "additionalProperties": false,
   "required": [
     "findings",
     "summary"
@@ -11,50 +8,7 @@
     "findings": {
       "type": "array",
       "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "title",
-          "severity",
-          "file",
-          "line",
-          "description",
-          "recommendation"
-        ],
-        "properties": {
-          "title": {
-            "type": "string",
-            "minLength": 1
-          },
-          "severity": {
-            "type": "string",
-            "enum": [
-              "critical",
-              "high",
-              "medium",
-              "low",
-              "info"
-            ]
-          },
-          "file": {
-            "type": "string"
-          },
-          "line": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "minimum": 1
-          },
-          "description": {
-            "type": "string",
-            "minLength": 1
-          },
-          "recommendation": {
-            "type": "string",
-            "minLength": 1
-          }
-        }
+        "type": "object"
       }
     },
     "summary": {

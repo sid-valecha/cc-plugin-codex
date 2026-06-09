@@ -125,7 +125,7 @@ test("review returns structured findings from fake Claude", async () => {
     "plan",
     "--model"
   ]);
-  assert.match(await readFile(promptFile, "utf8"), /Review the diff from main\.\.\.HEAD/);
+  assert.match(await readFile(promptFile, "utf8"), /Review the diff from main\.\.\.HEAD and return structured output/);
   assert.match(await readFile(promptFile, "utf8"), /buggy/);
 });
 
@@ -146,8 +146,8 @@ test("review supports adversarial prompt mode", async () => {
   assert.equal(payload.mode, "adversarial-review");
   assert.equal(payload.findings.length, 1);
   const prompt = await readFile(promptFile, "utf8");
-  assert.match(prompt, /Adversarially review the diff from main\.\.\.HEAD/);
-  assert.match(prompt, /subtle defects/);
+  assert.match(prompt, /Adversarially review the diff from main\.\.\.HEAD and return structured output/);
+  assert.match(prompt, /subtle concrete failure modes/);
 });
 
 test("adversarial-review is a thin alias for adversarial mode", async () => {
