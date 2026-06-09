@@ -37,8 +37,17 @@ If auth is missing, use `claude auth login`, `ANTHROPIC_API_KEY`, Bedrock with `
 The initial user-facing skill is:
 
 - `claude-setup`: diagnose local Claude Code installation and auth without sending a prompt to Claude.
+- `claude-rescue`: delegate a foreground task to Claude Code through headless stream-json mode.
 
-Future skills such as rescue, status, result, cancel, review, hooks, and worktree workflows are intentionally not implemented in this milestone.
+Run a foreground rescue task:
+
+```bash
+node scripts/claude-companion.mjs rescue --prompt "Inspect the failing test and suggest a fix"
+```
+
+Rescue defaults to model `sonnet` and permission mode `plan`. Use `--model spark` to map to `haiku`, `--write` to allow `acceptEdits`, and `--danger` only when `bypassPermissions` is explicitly intended.
+
+Future skills such as status, result, cancel, review, hooks, and worktree workflows are intentionally not implemented yet. Background rescue jobs start in Milestone 1.5.
 
 ## Development
 

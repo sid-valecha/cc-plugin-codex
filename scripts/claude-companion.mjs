@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { stat } from "node:fs/promises";
+import path from "node:path";
 
 const DEFAULT_TIMEOUT_MS = 5000;
 const AUTH_FAILURE_PATTERN =
@@ -26,21 +29,80 @@ const AUTH_PROBE_TIMEOUT_GUIDANCE = [
   "`claude auth status --text` timed out; check whether Claude Code is hanging or waiting for interactive input."
 ];
 
+const DEFAULT_RESCUE_MODEL = "sonnet";
+const MODEL_ALIASES = new Map([["spark", "haiku"]]);
+const DEFAULT_PERMISSION_MODE = "plan";
+const WRITE_PERMISSION_MODE = "acceptEdits";
+const DANGER_PERMISSION_MODE = "bypassPermissions";
+const VALID_PERMISSION_MODES = new Set([
+  "plan",
+  "acceptEdits",
+  "bypassPermissions",
+  "default",
+  "auto"
+]);
+
 function parseArgs(argv) {
   const options = {
     json: false,
-    help: false
+    help: false,
+    prompt: null,
+    cwd: null,
+    model: null,
+    permissionMode: null,
+    sessionId: null,
+    write: false,
+    danger: false,
+    background: false
   };
   let command = null;
   const rest = [];
 
-  for (const arg of argv) {
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
     if (arg === "--json") {
       options.json = true;
       continue;
     }
     if (arg === "-h" || arg === "--help") {
       options.help = true;
+      continue;
+    }
+    if (arg === "--prompt") {
+      options.prompt = readOptionValue(argv, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === "--cwd") {
+      options.cwd = readOptionValue(argv, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === "--model") {
+      options.model = readOptionValue(argv, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === "--permission-mode") {
+      options.permissionMode = readOptionValue(argv, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === "--session-id") {
+      options.sessionId = readOptionValue(argv, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === "--write") {
+      options.write = true;
+      continue;
+    }
+    if (arg === "--danger") {
+      options.danger = true;
+      continue;
+    }
+    if (arg === "--background") {
+      options.background = true;
       continue;
     }
     if (command === null) {
@@ -53,15 +115,33 @@ function parseArgs(argv) {
   return { command, options, rest };
 }
 
+function readOptionValue(argv, index, optionName) {
+  const value = argv[index + 1];
+  if (value === undefined || value.startsWith("--")) {
+    throw new Error(`${optionName} requires a value`);
+  }
+  return value;
+}
+
 function usage() {
   return [
     "Usage: node scripts/claude-companion.mjs <subcommand> [options]",
     "",
     "Implemented subcommands:",
     "  setup     Check local Node, npm, Claude Code, and Claude auth status.",
+    "  rescue    Run a foreground Claude Code delegation task.",
     "",
     "Options:",
-    "  --json    Emit machine-readable JSON."
+    "  --json                  Emit machine-readable JSON.",
+    "  --cwd <path>            Run from a specific working directory.",
+    "  --model <model>         Claude model alias or ID. Defaults to sonnet.",
+    "",
+    "Rescue options:",
+    "  --prompt <text>         Task prompt to send to Claude.",
+    "  --write                 Use acceptEdits permission mode.",
+    "  --danger                Use bypassPermissions permission mode.",
+    "  --permission-mode <m>   Explicit Claude permission mode.",
+    "  --session-id <uuid>     Explicit Claude session id for continuity."
   ].join("\n");
 }
 
@@ -292,6 +372,280 @@ function renderHumanSetup(result) {
   return lines.join("\n");
 }
 
+function normalizeModel(model) {
+  const rawModel = model?.trim() || DEFAULT_RESCUE_MODEL;
+  return MODEL_ALIASES.get(rawModel) ?? rawModel;
+}
+
+function resolvePermissionMode(options) {
+  let permissionMode = options.permissionMode ?? DEFAULT_PERMISSION_MODE;
+  if (options.write) {
+    permissionMode = WRITE_PERMISSION_MODE;
+  }
+  if (options.danger) {
+    permissionMode = DANGER_PERMISSION_MODE;
+  }
+  if (!VALID_PERMISSION_MODES.has(permissionMode)) {
+    throw new Error(
+      `Unsupported permission mode '${permissionMode}'. Expected one of: ${[
+        ...VALID_PERMISSION_MODES
+      ].join(", ")}`
+    );
+  }
+  return permissionMode;
+}
+
+async function resolveCwd(rawCwd) {
+  const cwd = path.resolve(rawCwd ?? process.cwd());
+  let info;
+  try {
+    info = await stat(cwd);
+  } catch {
+    throw new Error(`Working directory does not exist: ${cwd}`);
+  }
+  if (!info.isDirectory()) {
+    throw new Error(`Working directory is not a directory: ${cwd}`);
+  }
+  return cwd;
+}
+
+function buildRescueArgs({ model, permissionMode, sessionId }) {
+  return [
+    "--bare",
+    "-p",
+    "--input-format",
+    "stream-json",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--include-partial-messages",
+    "--include-hook-events",
+    "--session-id",
+    sessionId,
+    "--model",
+    model,
+    "--permission-mode",
+    permissionMode
+  ];
+}
+
+function runClaudeRescue({ cwd, prompt, model, permissionMode, sessionId }) {
+  const args = buildRescueArgs({ model, permissionMode, sessionId });
+  return new Promise((resolve) => {
+    const stdoutChunks = [];
+    const stderrChunks = [];
+    let settled = false;
+
+    const finish = (result) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve(result);
+    };
+
+    let child;
+    try {
+      child = spawn("claude", args, {
+        cwd,
+        stdio: ["pipe", "pipe", "pipe"]
+      });
+    } catch (error) {
+      finish({
+        ok: false,
+        status: error.code === "ENOENT" ? "missing" : "failed",
+        args,
+        stdout: "",
+        stderr: error.message,
+        exitCode: null,
+        signal: null
+      });
+      return;
+    }
+
+    child.stdout.on("data", (chunk) => stdoutChunks.push(chunk));
+    child.stderr.on("data", (chunk) => stderrChunks.push(chunk));
+    child.on("error", (error) => {
+      finish({
+        ok: false,
+        status: error.code === "ENOENT" ? "missing" : "failed",
+        args,
+        stdout: Buffer.concat(stdoutChunks).toString("utf8"),
+        stderr: error.message,
+        exitCode: null,
+        signal: null
+      });
+    });
+    child.on("close", (exitCode, signal) => {
+      finish({
+        ok: exitCode === 0,
+        status: exitCode === 0 ? "completed" : "failed",
+        args,
+        stdout: Buffer.concat(stdoutChunks).toString("utf8"),
+        stderr: Buffer.concat(stderrChunks).toString("utf8"),
+        exitCode,
+        signal
+      });
+    });
+
+    child.stdin.end(`${JSON.stringify({ type: "user", content: prompt })}\n`);
+  });
+}
+
+async function runRescue(options) {
+  if (options.background) {
+    throw new Error("--background is reserved for Milestone 1.5 and is not implemented yet");
+  }
+  if (!options.prompt || !options.prompt.trim()) {
+    throw new Error("rescue requires --prompt <text>");
+  }
+
+  const model = normalizeModel(options.model);
+  const permissionMode = resolvePermissionMode(options);
+  const sessionId = options.sessionId?.trim() || randomUUID();
+  const cwd = await resolveCwd(options.cwd);
+  const invocation = await runClaudeRescue({
+    cwd,
+    prompt: options.prompt,
+    model,
+    permissionMode,
+    sessionId
+  });
+  const stream = parseClaudeStream(invocation.stdout);
+  const resultText = stream.finalText || stream.text.join("").trim();
+
+  return {
+    ok: invocation.ok && resultText.length > 0,
+    status: invocation.ok ? (resultText.length > 0 ? "completed" : "no_result") : invocation.status,
+    kind: "rescue",
+    cwd,
+    model,
+    permissionMode,
+    sessionId,
+    command: ["claude", ...invocation.args],
+    exitCode: invocation.exitCode,
+    signal: invocation.signal,
+    result: resultText,
+    stderr: invocation.stderr,
+    stream
+  };
+}
+
+function parseClaudeStream(stdout) {
+  const parsedEvents = [];
+  const malformedLines = [];
+  const text = [];
+  let finalText = "";
+
+  for (const rawLine of stdout.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) {
+      continue;
+    }
+
+    let event;
+    try {
+      event = JSON.parse(line);
+    } catch {
+      malformedLines.push(rawLine);
+      continue;
+    }
+
+    parsedEvents.push(event);
+    const extractedText = extractTextFromEvent(event);
+    if (extractedText) {
+      text.push(extractedText);
+    }
+
+    const candidateFinal = extractFinalTextFromEvent(event);
+    if (candidateFinal) {
+      finalText = candidateFinal;
+    }
+  }
+
+  return {
+    text,
+    finalText,
+    eventCount: parsedEvents.length,
+    malformedLineCount: malformedLines.length,
+    malformedLines
+  };
+}
+
+function extractTextFromEvent(event) {
+  const candidates = [
+    event.delta?.text,
+    event.text,
+    event.content_delta?.text,
+    event.message?.content,
+    event.stream_event?.delta?.text,
+    event.stream_event?.text,
+    event.event?.delta?.text,
+    event.event?.text
+  ];
+
+  for (const candidate of candidates) {
+    const text = normalizeContent(candidate);
+    if (text) {
+      return text;
+    }
+  }
+
+  return "";
+}
+
+function extractFinalTextFromEvent(event) {
+  const candidates = [
+    event.result,
+    event.final,
+    event.final_text,
+    event.message?.content,
+    event.response?.content,
+    event.stream_event?.message?.content,
+    event.event?.message?.content
+  ];
+
+  for (const candidate of candidates) {
+    const text = normalizeContent(candidate).trim();
+    if (text) {
+      return text;
+    }
+  }
+
+  return "";
+}
+
+function normalizeContent(content) {
+  if (typeof content === "string") {
+    return content;
+  }
+  if (Array.isArray(content)) {
+    return content.map((item) => normalizeContent(item)).join("");
+  }
+  if (content && typeof content === "object") {
+    if (typeof content.text === "string") {
+      return content.text;
+    }
+    if (typeof content.content === "string") {
+      return content.content;
+    }
+  }
+  return "";
+}
+
+function renderHumanRescue(result) {
+  const lines = [];
+  if (result.result) {
+    lines.push(result.result);
+  } else {
+    lines.push("Claude rescue did not produce a final assistant result.");
+  }
+  if (!result.ok && result.stderr.trim()) {
+    lines.push("", "Claude stderr:", result.stderr.trim());
+  }
+  return lines.join("\n");
+}
+
 async function main() {
   const { command, options } = parseArgs(process.argv.slice(2));
 
@@ -300,19 +654,31 @@ async function main() {
     process.exit(command === null ? 1 : 0);
   }
 
-  if (command !== "setup") {
+  if (command === "setup") {
+    const result = await runSetup();
+    if (options.json) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log(renderHumanSetup(result));
+    }
+    process.exit(result.ok ? 0 : 1);
+  }
+
+  if (command === "rescue") {
+    const result = await runRescue(options);
+    if (options.json) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log(renderHumanRescue(result));
+    }
+    process.exit(result.ok ? 0 : 1);
+  }
+
+  {
     console.error(`Unknown subcommand: ${command}`);
     console.error(usage());
     process.exit(1);
   }
-
-  const result = await runSetup();
-  if (options.json) {
-    console.log(JSON.stringify(result, null, 2));
-  } else {
-    console.log(renderHumanSetup(result));
-  }
-  process.exit(result.ok ? 0 : 1);
 }
 
 main().catch((error) => {
