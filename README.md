@@ -43,6 +43,7 @@ The initial user-facing skill is:
 - `claude-cancel`: cancel a running Claude job.
 - `claude-review`: run a structured, read-only Claude Code review.
 - `claude-adversarial-review`: run a stricter read-only review over the same schema.
+- `claude-stop-review-hook`: configure the optional Codex Stop hook review flow.
 
 Run a foreground rescue task:
 
@@ -68,7 +69,7 @@ Rescue defaults to model `sonnet`, standard noninteractive Claude mode, and perm
 
 Job state is stored under `PLUGIN_DATA`, `CODEX_PLUGIN_DATA`, `CLAUDE_PLUGIN_DATA`, or `~/.codex/plugins/data/claude-code` in that order. Use `--state-dir <path>` for tests or custom local installs.
 
-Future skills such as adversarial review, hooks, and worktree workflows are intentionally not implemented yet.
+Future worktree workflows are intentionally not implemented yet.
 
 Run a structured read-only review:
 
@@ -100,6 +101,41 @@ You can also use:
 
 ```bash
 node scripts/claude-companion.mjs review --adversarial --base main
+```
+
+## Optional Stop Review Hook
+
+The plugin bundles `hooks/hooks.json` with a Codex `Stop` hook. Codex requires non-managed hooks to be reviewed and trusted with `/hooks` before they run.
+
+The hook is installed but inert by default, so trusting it does not automatically send prompts or diffs to Claude. Enable it in a shell before launching Codex:
+
+```bash
+export CLAUDE_COMPANION_STOP_REVIEW=1
+```
+
+Or enable it per repository by creating:
+
+```bash
+mkdir -p .codex
+touch .codex/claude-stop-review.enabled
+```
+
+When enabled, the hook runs a read-only Claude review at turn stop using `--permission-mode plan`. By default it reports findings without blocking Codex. To make high or critical findings block the hook command, opt in explicitly:
+
+```bash
+export CLAUDE_COMPANION_STOP_REVIEW_BLOCKING=1
+```
+
+Useful hook options:
+
+- `CLAUDE_COMPANION_STOP_REVIEW_MODEL=haiku` to choose a model.
+- `CLAUDE_COMPANION_STOP_REVIEW_BASE=main` to review `main...HEAD` instead of uncommitted changes.
+- `CLAUDE_COMPANION_STOP_REVIEW_ADVERSARIAL=1` to use the adversarial review prompt.
+
+You can test the helper directly without installing hooks:
+
+```bash
+node scripts/claude-companion.mjs hook-stop-review --json
 ```
 
 ## Development
