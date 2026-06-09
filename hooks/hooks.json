@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node hooks/claude-stop-review.mjs",
+            "timeout": 120,
+            "statusMessage": "Checking optional Claude Stop review"
+          }
+        ]
+      }
+    ]
+  }
+}

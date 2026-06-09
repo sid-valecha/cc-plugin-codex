@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -51,6 +51,8 @@ const DEFAULT_STATE_DIR = path.join(homedir(), ".codex", "plugins", "data", "cla
 const JOBS_FILE = "jobs.json";
 const CANCEL_GRACE_MS = 500;
 const STALE_RUNNING_GRACE_MS = 10000;
+const STOP_REVIEW_ENABLE_FILE = path.join(".codex", "claude-stop-review.enabled");
+const BLOCKING_SEVERITIES = new Set(["critical", "high"]);
 
 function parseArgs(argv) {
   const options = {
@@ -197,6 +199,8 @@ function usage() {
     "  review    Run a structured read-only Claude review.",
     "  adversarial-review",
     "           Run a stricter structured read-only Claude review.",
+    "  hook-stop-review",
+    "           Optional Stop hook helper for read-only Claude review.",
     "",
     "Options:",
     "  --json                  Emit machine-readable JSON.",
@@ -1473,6 +1477,128 @@ function renderHumanReview(result) {
   return lines.join("\n");
 }
 
+async function runHookStopReview(options) {
+  const hookInput = await readHookInput();
+  const cwd = await resolveHookCwd(options.cwd, hookInput);
+  const enabled = await isStopReviewHookEnabled(cwd);
+  const blocking = isTruthy(process.env.CLAUDE_COMPANION_STOP_REVIEW_BLOCKING);
+  const mode = isTruthy(process.env.CLAUDE_COMPANION_STOP_REVIEW_ADVERSARIAL)
+    ? "adversarial-review"
+    : "review";
+
+  if (!enabled) {
+    return {
+      ok: true,
+      status: "disabled",
+      kind: "hook-stop-review",
+      cwd,
+      blocking,
+      summary:
+        "Claude Stop review hook is installed but disabled. Set CLAUDE_COMPANION_STOP_REVIEW=1 or create .codex/claude-stop-review.enabled to enable it."
+    };
+  }
+
+  try {
+    const review = await runReview({
+      ...options,
+      cwd,
+      base: process.env.CLAUDE_COMPANION_STOP_REVIEW_BASE || options.base,
+      model: process.env.CLAUDE_COMPANION_STOP_REVIEW_MODEL || options.model,
+      adversarial: mode === "adversarial-review"
+    });
+    const blockingFindings = review.findings.filter((finding) =>
+      BLOCKING_SEVERITIES.has(finding.severity)
+    );
+    const shouldBlock = blocking && blockingFindings.length > 0;
+    return {
+      ok: !shouldBlock,
+      status: shouldBlock ? "blocked" : review.status,
+      kind: "hook-stop-review",
+      cwd,
+      blocking,
+      blockingSeverities: [...BLOCKING_SEVERITIES],
+      blockingFindings,
+      review
+    };
+  } catch (error) {
+    return {
+      ok: true,
+      status: "hook_error",
+      kind: "hook-stop-review",
+      cwd,
+      blocking,
+      error: error instanceof Error ? error.message : String(error),
+      summary: "Claude Stop review hook failed; Codex should continue."
+    };
+  }
+}
+
+async function readHookInput() {
+  let stdin = "";
+  for await (const chunk of process.stdin) {
+    stdin += chunk;
+  }
+  if (!stdin.trim()) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(stdin);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {
+      rawInput: stdin
+    };
+  }
+}
+
+async function resolveHookCwd(rawCwd, hookInput) {
+  const candidate =
+    rawCwd ||
+    hookInput.cwd ||
+    hookInput.workspaceRoot ||
+    hookInput.workspace_root ||
+    hookInput.projectRoot ||
+    hookInput.project_root ||
+    process.env.CLAUDE_COMPANION_HOOK_CWD ||
+    process.env.PWD ||
+    process.cwd();
+  return resolveCwd(candidate);
+}
+
+async function isStopReviewHookEnabled(cwd) {
+  if (isTruthy(process.env.CLAUDE_COMPANION_STOP_REVIEW)) {
+    return true;
+  }
+  return fileExists(path.join(cwd, STOP_REVIEW_ENABLE_FILE));
+}
+
+async function fileExists(filePath) {
+  try {
+    await access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isTruthy(value) {
+  return /^(1|true|yes|on)$/i.test(value ?? "");
+}
+
+function renderHumanHookStopReview(result) {
+  if (result.status === "disabled") {
+    return "";
+  }
+  if (result.status === "hook_error") {
+    return result.summary;
+  }
+  const renderedReview = renderHumanReview(result.review);
+  if (result.status === "blocked") {
+    return [`Claude Stop review found blocking findings.`, "", renderedReview].join("\n");
+  }
+  return renderedReview;
+}
+
 async function main() {
   const { command, options } = parseArgs(process.argv.slice(2));
 
@@ -1540,6 +1666,16 @@ async function main() {
       console.log(JSON.stringify(result, null, 2));
     } else {
       console.log(renderHumanReview(result));
+    }
+    process.exit(result.ok ? 0 : 1);
+  }
+
+  if (command === "hook-stop-review") {
+    const result = await runHookStopReview(options);
+    if (options.json) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log(renderHumanHookStopReview(result));
     }
     process.exit(result.ok ? 0 : 1);
   }
