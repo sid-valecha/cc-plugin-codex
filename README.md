@@ -79,6 +79,18 @@ node scripts/claude-companion.mjs review --base main
 
 Review uses `git diff`, Claude one-shot JSON output, `--permission-mode plan`, and `schemas/review-output.schema.json`. It returns structured findings and does not edit files.
 
+Run a stricter adversarial review with the same engine:
+
+```bash
+node scripts/claude-companion.mjs adversarial-review --base main
+```
+
+You can also use:
+
+```bash
+node scripts/claude-companion.mjs review --adversarial --base main
+```
+
 ## Development
 
 This project uses Node ESM and Node's built-in test runner.

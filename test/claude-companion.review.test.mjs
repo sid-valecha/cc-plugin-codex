@@ -129,6 +129,49 @@ test("review returns structured findings from fake Claude", async () => {
   assert.match(await readFile(promptFile, "utf8"), /buggy/);
 });
 
+test("review supports adversarial prompt mode", async () => {
+  const binDir = await makeFakeBin();
+  const tempDir = await mkdtemp(path.join(tmpdir(), "claude-review-"));
+  const promptFile = path.join(tempDir, "prompt.txt");
+
+  const result = await runCli(["review", "--adversarial", "--base", "main", "--json"], {
+    binDir,
+    env: {
+      FAKE_CLAUDE_PROMPT_FILE: promptFile
+    }
+  });
+
+  assert.equal(result.exitCode, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.mode, "adversarial-review");
+  assert.equal(payload.findings.length, 1);
+  const prompt = await readFile(promptFile, "utf8");
+  assert.match(prompt, /Adversarially review the diff from main\.\.\.HEAD/);
+  assert.match(prompt, /subtle defects/);
+});
+
+test("adversarial-review is a thin alias for adversarial mode", async () => {
+  const binDir = await makeFakeBin();
+  const tempDir = await mkdtemp(path.join(tmpdir(), "claude-review-"));
+  const argsFile = path.join(tempDir, "claude-args.txt");
+
+  const result = await runCli(["adversarial-review", "--base", "main", "--json"], {
+    binDir,
+    env: {
+      FAKE_CLAUDE_ARGS_FILE: argsFile
+    }
+  });
+
+  assert.equal(result.exitCode, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.mode, "adversarial-review");
+  assert.deepEqual(payload.diffCommand, ["git", "diff", "--no-ext-diff", "main...HEAD"]);
+  const claudeArgs = (await readFile(argsFile, "utf8")).trim().split("\n");
+  assert.equal(claudeArgs[0], "-p");
+  assert.equal(claudeArgs[1], "--output-format");
+  assert.equal(claudeArgs[2], "json");
+});
+
 test("review handles empty diffs without invoking Claude", async () => {
   const binDir = await makeFakeBin({ diff: "" });
 

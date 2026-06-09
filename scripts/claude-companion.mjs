@@ -69,7 +69,8 @@ function parseArgs(argv) {
     danger: false,
     plan: false,
     background: false,
-    bare: false
+    bare: false,
+    adversarial: false
   };
   let command = null;
   const rest = [];
@@ -154,6 +155,10 @@ function parseArgs(argv) {
       options.bare = true;
       continue;
     }
+    if (arg === "--adversarial") {
+      options.adversarial = true;
+      continue;
+    }
     if (command === null) {
       command = arg;
       continue;
@@ -183,6 +188,8 @@ function usage() {
     "  result    Show the latest or selected Claude job result.",
     "  cancel    Cancel a running Claude job.",
     "  review    Run a structured read-only Claude review.",
+    "  adversarial-review",
+    "           Run a stricter structured read-only Claude review.",
     "",
     "Options:",
     "  --json                  Emit machine-readable JSON.",
@@ -205,7 +212,8 @@ function usage() {
     "",
     "Review options:",
     "  --base <ref>            Review git diff from <ref>...HEAD.",
-    "  --schema <path>         Override review JSON schema path."
+    "  --schema <path>         Override review JSON schema path.",
+    "  --adversarial           Use the stricter adversarial review prompt."
   ].join("\n");
 }
 
@@ -1218,9 +1226,9 @@ async function loadReviewSchema(schemaPath) {
   };
 }
 
-function buildReviewPrompt({ diff, base }) {
+function buildReviewPrompt({ diff, base, mode = "review" }) {
   const target = base ? `the diff from ${base}...HEAD` : "the uncommitted working tree diff";
-  return [
+  const basePrompt = [
     `Review ${target}.`,
     "",
     "Return only findings that are actionable defects or meaningful risks.",
@@ -1230,7 +1238,24 @@ function buildReviewPrompt({ diff, base }) {
     "",
     "Diff:",
     diff
-  ].join("\n");
+  ];
+
+  if (mode === "adversarial-review") {
+    return [
+      `Adversarially review ${target}.`,
+      "",
+      "Assume the change may contain subtle defects and look for the strongest concrete failure modes.",
+      "Challenge optimistic assumptions, especially around process lifecycle, permissions, state persistence, schema handling, and user-visible behavior.",
+      "Return only actionable findings with defensible evidence from the diff.",
+      "Do not invent issues; if the diff is sound, return an empty findings array.",
+      "Use file paths and line numbers from the diff when possible.",
+      "",
+      "Diff:",
+      diff
+    ].join("\n");
+  }
+
+  return basePrompt.join("\n");
 }
 
 async function runClaudeReview({ cwd, prompt, model, schema }) {
@@ -1315,11 +1340,13 @@ function validateFinding(finding, index, errors) {
 async function runReview(options) {
   const cwd = await resolveCwd(options.cwd);
   const model = normalizeModel(options.model);
+  const mode = options.adversarial ? "adversarial-review" : "review";
   const diffResult = await collectGitDiff({ cwd, base: options.base });
   if (!diffResult.diff.trim()) {
     return {
       ok: true,
       status: "empty_diff",
+      mode,
       cwd,
       base: options.base,
       model,
@@ -1334,7 +1361,8 @@ async function runReview(options) {
   const { path: schemaPath, schema } = await loadReviewSchema(options.schema);
   const prompt = buildReviewPrompt({
     diff: diffResult.diff,
-    base: options.base
+    base: options.base,
+    mode
   });
   const invocation = await runClaudeReview({
     cwd,
@@ -1349,6 +1377,7 @@ async function runReview(options) {
   return {
     ok: true,
     status: "completed",
+    mode,
     cwd,
     base: options.base,
     model,
@@ -1454,7 +1483,10 @@ async function main() {
     process.exit(result.ok ? 0 : 1);
   }
 
-  if (command === "review") {
+  if (command === "review" || command === "adversarial-review") {
+    if (command === "adversarial-review") {
+      options.adversarial = true;
+    }
     const result = await runReview(options);
     if (options.json) {
       console.log(JSON.stringify(result, null, 2));
