@@ -19,6 +19,12 @@ Run a foreground rescue task:
 node scripts/claude-companion.mjs rescue --prompt "<task>"
 ```
 
+Run a background rescue task:
+
+```bash
+node scripts/claude-companion.mjs rescue --prompt "<task>" --background
+```
+
 For machine-readable output:
 
 ```bash
@@ -36,5 +42,6 @@ Useful options:
 - `--permission-mode <mode>` for an explicit Claude Code permission mode.
 - `--session-id <uuid>` when continuing a known Claude session.
 - `--bare` for strict isolation when using `claude setup-token`, `ANTHROPIC_API_KEY`, Bedrock, Vertex, or `apiKeyHelper`.
+- `--state-dir <path>` for tests or custom plugin data locations.
 
-This milestone is foreground-only. Do not use `--background`, status, result, or cancel flows yet.
+Use `claude-status`, `claude-result`, and `claude-cancel` for managed background jobs.

@@ -45,9 +45,25 @@ Run a foreground rescue task:
 node scripts/claude-companion.mjs rescue --prompt "Inspect the failing test and suggest a fix"
 ```
 
+Start a background rescue job:
+
+```bash
+node scripts/claude-companion.mjs rescue --prompt "Inspect the failing test and suggest a fix" --background
+```
+
+Inspect and manage jobs:
+
+```bash
+node scripts/claude-companion.mjs status
+node scripts/claude-companion.mjs result --job-id <job-id>
+node scripts/claude-companion.mjs cancel --job-id <job-id>
+```
+
 Rescue defaults to model `sonnet`, standard noninteractive Claude mode, and permission mode `acceptEdits`. Use `--plan` for read-only planning, `--model spark` to map to `haiku`, `--permission-mode auto` for Claude's auto permission classifier, and `--danger` only when `bypassPermissions` is explicitly intended. Use `--bare` only when you want strict isolation and have bare-compatible auth such as `claude setup-token`, `ANTHROPIC_API_KEY`, provider credentials, or `apiKeyHelper`.
 
-Future skills such as status, result, cancel, review, hooks, and worktree workflows are intentionally not implemented yet. Background rescue jobs start in Milestone 1.5.
+Job state is stored under `PLUGIN_DATA`, `CODEX_PLUGIN_DATA`, `CLAUDE_PLUGIN_DATA`, or `~/.codex/plugins/data/claude-code` in that order. Use `--state-dir <path>` for tests or custom local installs.
+
+Future skills such as review, hooks, and worktree workflows are intentionally not implemented yet.
 
 ## Development
 

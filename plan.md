@@ -334,6 +334,7 @@ Deliverables:
 - marketplace metadata
 - install/update flow
 - parity matrix against `openai/codex-plugin-cc`
+- deferred permission-learning flow that analyzes recurring Claude permission prompts or command history, proposes an allowlist file for user review, and feeds approved patterns into Claude through settings or `--allowedTools`
 
 Explicit non-goals unless evidence changes:
 
