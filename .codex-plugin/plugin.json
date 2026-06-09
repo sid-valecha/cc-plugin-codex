@@ -1,0 +1,22 @@
+{
+  "name": "cc-plugin-codex",
+  "version": "0.1.0",
+  "description": "Codex plugin that invokes Claude Code as a guest subprocess.",
+  "author": {
+    "name": "Sid Valecha"
+  },
+  "license": "MIT",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Claude Code Companion",
+    "shortDescription": "Diagnose and invoke Claude Code from Codex.",
+    "longDescription": "Claude Code Companion provides Codex skills and deterministic Node scripts for using Claude Code as a local guest subprocess.",
+    "developerName": "Sid Valecha",
+    "category": "Productivity",
+    "capabilities": [
+      "local-cli",
+      "diagnostics"
+    ],
+    "defaultPrompt": "Run Claude setup diagnostics."
+  }
+}
