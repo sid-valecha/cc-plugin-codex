@@ -1,0 +1,15 @@
+{
+  "name": "cc-plugin-codex",
+  "version": "0.1.0",
+  "description": "Codex plugin that invokes Claude Code as a guest subprocess.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "setup": "node scripts/claude-companion.mjs setup",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
