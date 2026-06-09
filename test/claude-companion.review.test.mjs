@@ -150,6 +150,28 @@ test("review supports adversarial prompt mode", async () => {
   assert.match(prompt, /subtle concrete failure modes/);
 });
 
+test("review passes explicit Claude effort level", async () => {
+  const binDir = await makeFakeBin();
+  const tempDir = await mkdtemp(path.join(tmpdir(), "claude-review-"));
+  const argsFile = path.join(tempDir, "claude-args.txt");
+
+  const result = await runCli(["review", "--base", "main", "--effort", "low", "--json"], {
+    binDir,
+    env: {
+      FAKE_CLAUDE_ARGS_FILE: argsFile
+    }
+  });
+
+  assert.equal(result.exitCode, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.effort, "low");
+
+  const claudeArgs = (await readFile(argsFile, "utf8")).trim().split("\n");
+  assert.equal(claudeArgs[8], "sonnet");
+  assert.equal(claudeArgs[9], "--effort");
+  assert.equal(claudeArgs[10], "low");
+});
+
 test("adversarial-review is a thin alias for adversarial mode", async () => {
   const binDir = await makeFakeBin();
   const tempDir = await mkdtemp(path.join(tmpdir(), "claude-review-"));

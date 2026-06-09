@@ -39,6 +39,7 @@ const PLAN_PERMISSION_MODE = "plan";
 const WRITE_PERMISSION_MODE = "acceptEdits";
 const DANGER_PERMISSION_MODE = "bypassPermissions";
 const DEFAULT_REVIEW_MAX_DIFF_BYTES = 200000;
+const VALID_EFFORT_LEVELS = new Set(["low", "medium", "high", "xhigh", "max"]);
 const VALID_PERMISSION_MODES = new Set([
   "plan",
   "acceptEdits",
@@ -63,6 +64,7 @@ function parseArgs(argv) {
     base: null,
     schema: null,
     model: null,
+    effort: null,
     permissionMode: null,
     stateDir: null,
     jobId: null,
@@ -111,6 +113,11 @@ function parseArgs(argv) {
     }
     if (arg === "--model") {
       options.model = readOptionValue(argv, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === "--effort") {
+      options.effort = readOptionValue(argv, index, arg);
       index += 1;
       continue;
     }
@@ -206,6 +213,7 @@ function usage() {
     "  --json                  Emit machine-readable JSON.",
     "  --cwd <path>            Run from a specific working directory.",
     "  --model <model>         Claude model alias or ID. Defaults to sonnet.",
+    "  --effort <level>        Claude effort level: low, medium, high, xhigh, or max.",
     "  --state-dir <path>      Override plugin job state directory.",
     "",
     "Rescue options:",
@@ -461,6 +469,19 @@ function normalizeModel(model) {
   return MODEL_ALIASES.get(rawModel) ?? rawModel;
 }
 
+function normalizeEffort(effort) {
+  if (!effort) {
+    return null;
+  }
+  const normalized = effort.trim();
+  if (!VALID_EFFORT_LEVELS.has(normalized)) {
+    throw new Error(
+      `Unsupported effort level '${effort}'. Expected one of: ${[...VALID_EFFORT_LEVELS].join(", ")}`
+    );
+  }
+  return normalized;
+}
+
 function resolvePermissionMode(options) {
   let permissionMode = options.permissionMode ?? DEFAULT_PERMISSION_MODE;
   if (options.plan) {
@@ -496,7 +517,7 @@ async function resolveCwd(rawCwd) {
   return cwd;
 }
 
-function buildRescueArgs({ bare, model, permissionMode, sessionId }) {
+function buildRescueArgs({ bare, model, effort, permissionMode, sessionId }) {
   return [
     ...(bare ? ["--bare"] : []),
     "-p",
@@ -511,6 +532,7 @@ function buildRescueArgs({ bare, model, permissionMode, sessionId }) {
     sessionId,
     "--model",
     model,
+    ...(effort ? ["--effort", effort] : []),
     "--permission-mode",
     permissionMode
   ];
@@ -521,12 +543,13 @@ function runClaudeRescue({
   cwd,
   prompt,
   model,
+  effort,
   permissionMode,
   sessionId,
   onChildPid,
   detached = false
 }) {
-  const args = buildRescueArgs({ bare, model, permissionMode, sessionId });
+  const args = buildRescueArgs({ bare, model, effort, permissionMode, sessionId });
   return new Promise((resolve) => {
     const stdoutChunks = [];
     const stderrChunks = [];
@@ -613,6 +636,7 @@ async function runRescue(options) {
   }
 
   const model = normalizeModel(options.model);
+  const effort = normalizeEffort(options.effort);
   const permissionMode = resolvePermissionMode(options);
   const sessionId = options.sessionId?.trim() || randomUUID();
   const cwd = await resolveCwd(options.cwd);
@@ -622,6 +646,7 @@ async function runRescue(options) {
       options,
       cwd,
       model,
+      effort,
       permissionMode,
       sessionId
     });
@@ -632,6 +657,7 @@ async function runRescue(options) {
     cwd,
     prompt: options.prompt,
     model,
+    effort,
     permissionMode,
     sessionId
   });
@@ -644,6 +670,7 @@ async function runRescue(options) {
     kind: "rescue",
     cwd,
     model,
+    effort,
     permissionMode,
     isolation: options.bare ? "bare" : "standard",
     sessionId,
@@ -888,7 +915,7 @@ function summarizeResult(result) {
   return result.trim().replace(/\s+/g, " ").slice(0, 160);
 }
 
-async function startBackgroundRescue({ options, cwd, model, permissionMode, sessionId }) {
+async function startBackgroundRescue({ options, cwd, model, effort, permissionMode, sessionId }) {
   const stateDir = resolveStateDir(options.stateDir);
   await ensureStateDir(stateDir);
   const jobId = `rescue-${Date.now()}-${randomUUID().slice(0, 8)}`;
@@ -904,6 +931,7 @@ async function startBackgroundRescue({ options, cwd, model, permissionMode, sess
     runnerPid: null,
     childPid: null,
     model,
+    effort,
     permissionMode,
     isolation: options.bare ? "bare" : "standard",
     logPath: paths.logPath,
@@ -961,6 +989,7 @@ async function runRescueJob(options) {
     cwd: job.cwd,
     prompt: job.prompt,
     model: job.model,
+    effort: job.effort,
     permissionMode: job.permissionMode,
     sessionId: job.claudeSessionId,
     detached: true,
@@ -1296,7 +1325,7 @@ function buildReviewPrompt({ diff, base, mode = "review" }) {
   return basePrompt.join("\n");
 }
 
-async function runClaudeReview({ cwd, prompt, model, schema }) {
+async function runClaudeReview({ cwd, prompt, model, effort, schema }) {
   const args = [
     "-p",
     "--output-format",
@@ -1307,6 +1336,7 @@ async function runClaudeReview({ cwd, prompt, model, schema }) {
     "plan",
     "--model",
     model,
+    ...(effort ? ["--effort", effort] : []),
     prompt
   ];
   return runCommand("claude", args, { cwd });
@@ -1378,6 +1408,7 @@ function validateFinding(finding, index, errors) {
 async function runReview(options) {
   const cwd = await resolveCwd(options.cwd);
   const model = normalizeModel(options.model);
+  const effort = normalizeEffort(options.effort);
   const mode = options.adversarial ? "adversarial-review" : "review";
   const maxDiffBytes =
     Number.isFinite(options.maxDiffBytes) && options.maxDiffBytes > 0
@@ -1393,6 +1424,7 @@ async function runReview(options) {
       cwd,
       base: options.base,
       model,
+      effort,
       findings: [],
       summary: options.base
         ? `No changes found in diff ${options.base}...HEAD.`
@@ -1418,6 +1450,7 @@ async function runReview(options) {
     cwd,
     prompt,
     model,
+    effort,
     schema
   });
   if (!invocation.ok) {
@@ -1431,6 +1464,7 @@ async function runReview(options) {
     cwd,
     base: options.base,
     model,
+    effort,
     permissionMode: "plan",
     schemaPath,
     diffCommand: diffResult.command,
@@ -1504,6 +1538,7 @@ async function runHookStopReview(options) {
       cwd,
       base: process.env.CLAUDE_COMPANION_STOP_REVIEW_BASE || options.base,
       model: process.env.CLAUDE_COMPANION_STOP_REVIEW_MODEL || options.model,
+      effort: process.env.CLAUDE_COMPANION_STOP_REVIEW_EFFORT || options.effort,
       adversarial: mode === "adversarial-review"
     });
     const blockingFindings = review.findings.filter((finding) =>
@@ -1534,6 +1569,9 @@ async function runHookStopReview(options) {
 }
 
 async function readHookInput() {
+  if (process.stdin.isTTY) {
+    return {};
+  }
   let stdin = "";
   for await (const chunk of process.stdin) {
     stdin += chunk;
