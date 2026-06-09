@@ -35,6 +35,7 @@ Useful options:
 
 - `--cwd <path>` to run Claude from a specific working directory.
 - `--model <model>` to choose a Claude model. The default is `sonnet`; `spark` maps to `haiku`.
+- `--effort <level>` to pass Claude Code effort: `low`, `medium`, `high`, `xhigh`, or `max`.
 - `--plan` to use read-only `plan` permission mode.
 - `--write` to force Claude Code edits with `acceptEdits`, which is also the default for rescue.
 - `--permission-mode auto` to use Claude Code's automatic permission classifier.

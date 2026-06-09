@@ -14,6 +14,9 @@ child.on("exit", (exitCode, signal) => {
     process.kill(process.pid, signal);
     return;
   }
+  if (exitCode === null) {
+    console.error("claude-stop-review: child exited without code or signal; treating as failure");
+  }
   process.exit(exitCode ?? 1);
 });
 

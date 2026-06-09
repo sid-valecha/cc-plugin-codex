@@ -30,6 +30,7 @@ Useful options:
 - `--cwd <path>` to run from a specific repository.
 - `--base <ref>` to review `<ref>...HEAD`.
 - `--model <model>` to choose a Claude model. The default is `sonnet`; `spark` maps to `haiku`.
+- `--effort <level>` to pass Claude Code effort: `low`, `medium`, `high`, `xhigh`, or `max`.
 - `--schema <path>` to override the review JSON schema.
 - `--max-diff-bytes <n>` to raise or lower the single-review diff limit. The default is 200000 bytes.
 

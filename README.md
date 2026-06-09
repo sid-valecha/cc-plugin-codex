@@ -67,6 +67,8 @@ node scripts/claude-companion.mjs cancel --job-id <job-id>
 
 Rescue defaults to model `sonnet`, standard noninteractive Claude mode, and permission mode `acceptEdits`. Use `--plan` for read-only planning, `--model spark` to map to `haiku`, `--permission-mode auto` for Claude's auto permission classifier, and `--danger` only when `bypassPermissions` is explicitly intended. Use `--bare` only when you want strict isolation and have bare-compatible auth such as `claude setup-token`, `ANTHROPIC_API_KEY`, provider credentials, or `apiKeyHelper`.
 
+Use `--effort low`, `--effort medium`, `--effort high`, `--effort xhigh`, or `--effort max` to pass Claude Code's effort setting. Claude Code may route short model aliases differently than expected; when cost matters, prefer a full Claude Code model ID and inspect the raw `modelUsage` in `--json` output.
+
 Job state is stored under `PLUGIN_DATA`, `CODEX_PLUGIN_DATA`, `CLAUDE_PLUGIN_DATA`, or `~/.codex/plugins/data/claude-code` in that order. Use `--state-dir <path>` for tests or custom local installs.
 
 Future worktree workflows are intentionally not implemented yet.
@@ -113,6 +115,12 @@ The hook is installed but inert by default, so trusting it does not automaticall
 export CLAUDE_COMPANION_STOP_REVIEW=1
 ```
 
+If Codex invokes plugin-bundled hooks from a workspace other than this plugin root, also point the hook at the plugin checkout:
+
+```bash
+export CLAUDE_COMPANION_PLUGIN_ROOT=/absolute/path/to/cc-plugin-codex
+```
+
 Or enable it per repository by creating:
 
 ```bash
@@ -129,6 +137,7 @@ export CLAUDE_COMPANION_STOP_REVIEW_BLOCKING=1
 Useful hook options:
 
 - `CLAUDE_COMPANION_STOP_REVIEW_MODEL=haiku` to choose a model.
+- `CLAUDE_COMPANION_STOP_REVIEW_EFFORT=low` to choose Claude Code effort.
 - `CLAUDE_COMPANION_STOP_REVIEW_BASE=main` to review `main...HEAD` instead of uncommitted changes.
 - `CLAUDE_COMPANION_STOP_REVIEW_ADVERSARIAL=1` to use the adversarial review prompt.
 

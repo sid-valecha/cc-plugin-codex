@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
@@ -111,6 +111,22 @@ test("hook-stop-review runs read-only review when enabled", async () => {
   assert.equal(claudeArgs[0], "-p");
   assert.equal(claudeArgs[1], "--output-format");
   assert.equal(claudeArgs[2], "json");
+});
+
+test("hook-stop-review runs when enabled by project marker file", async () => {
+  const binDir = await makeFakeBin();
+  const workDir = await mkdtemp(path.join(tmpdir(), "claude-hook-cwd-"));
+  await mkdir(path.join(workDir, ".codex"), { recursive: true });
+  await writeFile(path.join(workDir, ".codex", "claude-stop-review.enabled"), "", "utf8");
+
+  const result = await runCli(["hook-stop-review", "--cwd", workDir, "--json"], {
+    binDir
+  });
+
+  assert.equal(result.exitCode, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.status, "completed");
+  assert.equal(payload.review.findings.length, 1);
 });
 
 test("hook-stop-review can block on high-severity findings when opted in", async () => {

@@ -101,6 +101,8 @@ test("rescue invokes Claude with stream-json flags and user prompt", async () =>
       "Fix the failing test",
       "--model",
       "spark",
+      "--effort",
+      "low",
       "--write",
       "--session-id",
       "session-123",
@@ -125,6 +127,7 @@ test("rescue invokes Claude with stream-json flags and user prompt", async () =>
   assert.equal(payload.result, "Final answer");
   assert.equal(payload.cwd, workDir);
   assert.equal(payload.model, "haiku");
+  assert.equal(payload.effort, "low");
   assert.equal(payload.permissionMode, "acceptEdits");
   assert.equal(payload.isolation, "standard");
   assert.equal(payload.sessionId, "session-123");
@@ -143,6 +146,8 @@ test("rescue invokes Claude with stream-json flags and user prompt", async () =>
     "session-123",
     "--model",
     "haiku",
+    "--effort",
+    "low",
     "--permission-mode",
     "acceptEdits"
   ]);

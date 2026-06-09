@@ -15,6 +15,12 @@ Enable the hook in the shell before launching Codex:
 export CLAUDE_COMPANION_STOP_REVIEW=1
 ```
 
+If Codex invokes the bundled hook from a workspace other than this plugin root, also set:
+
+```bash
+export CLAUDE_COMPANION_PLUGIN_ROOT=/absolute/path/to/cc-plugin-codex
+```
+
 Or enable it per repository:
 
 ```bash
@@ -31,6 +37,7 @@ export CLAUDE_COMPANION_STOP_REVIEW_BLOCKING=1
 Useful options:
 
 - `CLAUDE_COMPANION_STOP_REVIEW_MODEL=haiku` to choose a model.
+- `CLAUDE_COMPANION_STOP_REVIEW_EFFORT=low` to choose Claude Code effort.
 - `CLAUDE_COMPANION_STOP_REVIEW_BASE=main` to review `main...HEAD`.
 - `CLAUDE_COMPANION_STOP_REVIEW_ADVERSARIAL=1` to use the adversarial review prompt.
 
