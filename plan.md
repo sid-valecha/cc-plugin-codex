@@ -362,6 +362,7 @@ Deliverables:
 - README quickstart
 - troubleshooting guide
 - final issue list for deferred parity work
+- final issue list for deferred setup UX polish, including sandbox/keychain auth visibility
 
 Smoke tests:
 

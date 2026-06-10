@@ -327,6 +327,10 @@ Known non-parity gaps to close before release candidate:
 
 - Implement permission-learning analysis/export later if the deferred design is accepted.
 
+Deferred setup UX polish:
+
+- Improve setup rendering for the documented sandbox/keychain auth visibility case. See `context/deferred-setup-auth-ux.md`.
+
 ## Development
 
 This project uses Node ESM and Node's built-in test runner.
