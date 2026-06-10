@@ -17,6 +17,13 @@ If setup reports unauthenticated even though `claude auth status --text` works i
 
 Real rescue calls can send prompts and workspace context to Claude Code and may spend quota. If the Codex host offers persistent approvals, ask the user to approve the narrow prefix `node scripts/claude-companion.mjs rescue` instead of broad commands like `node`. If host policy blocks external disclosure, do not bypass it.
 
+If the host approval system denies the rescue command because it would disclose
+workspace context to Claude, stop and report that `claude-rescue` was blocked.
+Do not silently complete the task locally with Codex, because that makes a
+Claude integration smoke test look successful when Claude never ran. Only fall
+back to local Codex implementation if the user explicitly asks for a local
+fallback after the block is reported.
+
 Run a foreground rescue task:
 
 ```bash
@@ -82,6 +89,8 @@ Model guidance:
 
 Permission guidance:
 
+- Host/Codex approval and Claude Code tool approval are separate layers. Host denial happens before Claude runs; `permission_blocked` happens after Claude starts and requests its own tool approval.
+- If host policy denies external disclosure, report the denial and the narrow command prefix to approve. Do not proceed locally unless the user explicitly asks.
 - Codex approval only starts the plugin command; Claude Code can still request approval for its own tools inside the run.
 - If the result status is `permission_blocked`, tell the user which tool was blocked and suggest either a narrow `--allow-tool` pattern or `--trust-local-dev` for trusted local repositories.
 - Do not use `--danger` as the default fix for permission blocks.
