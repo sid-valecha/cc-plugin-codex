@@ -66,6 +66,20 @@ const DESTRUCTIVE_COMMAND_PATTERN =
   /\b(rm\s+-|git\s+clean\b|git\s+reset\s+--hard\b|npm\s+publish\b|pnpm\s+publish\b|yarn\s+npm\s+publish\b|deploy\b|kubectl\b|docker\s+push\b|aws\b|gcloud\b|scp\b|ssh\b|curl\b|wget\b)\b/i;
 const READ_ONLY_COMMAND_PATTERN =
   /^(npm|pnpm|yarn|bun)\s+(run\s+)?(test|lint|typecheck|check|format)(\b|:)|^(git\s+(status|diff|log|show)|ls\b|pwd\b|cat\b|sed\b|rg\b|grep\b|find\b)/i;
+const PLAN_PROMPT_PREFIX = [
+  "You are Claude Code acting as a planning, architecture, and systems-design partner for Codex.",
+  "Produce a concrete plan, tradeoffs, risks, sequencing, validation approach, and open questions.",
+  "Stay read-only. Do not edit files or run mutating commands unless a later task explicitly asks for implementation.",
+  "",
+  "Planning request:"
+].join("\n");
+const UI_PROMPT_PREFIX = [
+  "You are Claude Code acting as a frontend UI and product-design specialist for Codex.",
+  "Focus on visual hierarchy, interaction quality, responsive layout, accessibility, implementation details, and design polish.",
+  "When editing, keep changes scoped to the requested interface and preserve the existing stack and project conventions.",
+  "",
+  "UI/design request:"
+].join("\n");
 
 function parseArgs(argv) {
   const options = {
@@ -245,6 +259,8 @@ function usage() {
     "Implemented subcommands:",
     "  setup     Check local Node, npm, Claude Code, and Claude auth status.",
     "  rescue    Run a foreground or background Claude Code delegation task.",
+    "  plan      Ask Claude for read-only planning, architecture, or strategy help.",
+    "  ui        Ask Claude for frontend UI/design implementation or polish.",
     "  status    List active and recent Claude jobs.",
     "  result    Show the latest or selected Claude job result.",
     "  cancel    Cancel a running Claude job.",
@@ -276,6 +292,10 @@ function usage() {
     "  --resume                Continue the latest resumable rescue session in this workspace.",
     "  --fresh                 Explicitly start a new rescue session.",
     "  --bare                  Use Claude bare mode for API-key/helper/provider auth.",
+    "",
+    "Plan/UI options:",
+    "  plan always uses read-only plan permission mode.",
+    "  ui uses acceptEdits by default; add --plan for read-only UI critique.",
     "",
     "Job options:",
     "  --job-id <id>           Select a specific job for result or cancel.",
@@ -755,6 +775,41 @@ async function runRescue(options) {
   };
 }
 
+async function runPlan(options) {
+  if (!options.prompt || !options.prompt.trim()) {
+    throw new Error("plan requires --prompt <text>");
+  }
+  const result = await runRescue({
+    ...options,
+    prompt: `${PLAN_PROMPT_PREFIX}\n${options.prompt.trim()}`,
+    plan: true,
+    write: false,
+    danger: false,
+    permissionMode: PLAN_PERMISSION_MODE
+  });
+  return {
+    ...result,
+    kind: result.job ? result.job.kind : "plan",
+    productMode: "plan"
+  };
+}
+
+async function runUi(options) {
+  if (!options.prompt || !options.prompt.trim()) {
+    throw new Error("ui requires --prompt <text>");
+  }
+  const result = await runRescue({
+    ...options,
+    prompt: `${UI_PROMPT_PREFIX}\n${options.prompt.trim()}`,
+    permissionMode: options.plan ? PLAN_PERMISSION_MODE : (options.permissionMode ?? WRITE_PERMISSION_MODE)
+  });
+  return {
+    ...result,
+    kind: result.job ? result.job.kind : "ui",
+    productMode: "ui"
+  };
+}
+
 function normalizeWaitTimeoutMs(timeoutMs) {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
     throw new Error("--wait-timeout-ms must be a positive integer");
@@ -982,7 +1037,8 @@ function renderHumanRescue(result) {
     return lines.join("\n");
   }
   if (result.job && result.status === "running") {
-    lines.push(`Started Claude ${result.job.kind} job ${result.job.id}`);
+    const productMode = result.productMode ? ` (${result.productMode})` : "";
+    lines.push(`Started Claude ${result.job.kind} job ${result.job.id}${productMode}`);
     lines.push(`Status: ${result.job.status}`);
     lines.push(`Session: ${result.job.claudeSessionId || "unknown"} (${result.job.sessionMode || "unknown"})`);
     if (result.job.resumedFromJobId) {
@@ -991,7 +1047,7 @@ function renderHumanRescue(result) {
     lines.push(`Result: ${result.job.resultPath}`);
     return lines.join("\n");
   }
-  lines.push(`Claude rescue ${result.status}.`);
+  lines.push(`Claude ${result.productMode || result.kind || "rescue"} ${result.status}.`);
   lines.push(`Session: ${result.sessionId || "unknown"} (${result.sessionMode || "unknown"})`);
   if (result.resumedFromJobId) {
     lines.push(`Resumed from job: ${result.resumedFromJobId}`);
@@ -2456,6 +2512,26 @@ async function main() {
 
   if (command === "rescue") {
     const result = await runRescue(options);
+    if (options.json) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log(renderHumanRescue(result));
+    }
+    process.exit(result.ok ? 0 : 1);
+  }
+
+  if (command === "plan") {
+    const result = await runPlan(options);
+    if (options.json) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log(renderHumanRescue(result));
+    }
+    process.exit(result.ok ? 0 : 1);
+  }
+
+  if (command === "ui" || command === "design") {
+    const result = await runUi(options);
     if (options.json) {
       console.log(JSON.stringify(result, null, 2));
     } else {

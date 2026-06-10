@@ -34,7 +34,7 @@ explicit Codex skills before attempting automatic routing.
 
 ### Claude Planning
 
-Add a `claude-plan` skill that invokes Claude in read-only planning mode.
+Implemented as `claude-plan` and the `plan` subcommand.
 
 Expected behavior:
 
@@ -45,11 +45,11 @@ Expected behavior:
   and architecture recommendations.
 - Do not edit files by default.
 
-Estimated effort: 1-2 hours with tests/docs.
+Implemented with fake-Claude tests/docs.
 
 ### Claude UI / Design
 
-Add a `claude-ui` or `claude-design` skill for frontend design and UI polish.
+Implemented as `claude-ui` plus `ui` and `design` subcommands.
 
 Expected behavior:
 
@@ -60,7 +60,7 @@ Expected behavior:
 - Keep this explicit; do not silently route ordinary Codex frontend tasks to
   Claude.
 
-Estimated effort: 2-4 hours with tests/docs.
+Implemented with fake-Claude tests/docs.
 
 ### Claude Skill / Plugin Bridging
 

@@ -188,6 +188,128 @@ test("rescue supports bare isolation mode when requested", async () => {
   assert.equal(claudeArgs[1], "-p");
 });
 
+test("plan invokes Claude with read-only planning scaffold", async () => {
+  const binDir = await makeFakeClaudeBin();
+  const workDir = await mkdtemp(path.join(tmpdir(), "claude-plan-cwd-"));
+  const argsFile = path.join(workDir, "args.txt");
+  const stdinFile = path.join(workDir, "stdin.ndjson");
+
+  const result = await runCli(
+    [
+      "plan",
+      "--prompt",
+      "Design the migration path",
+      "--model",
+      "opus",
+      "--effort",
+      "high",
+      "--session-id",
+      "session-plan",
+      "--cwd",
+      workDir,
+      "--json"
+    ],
+    {
+      binDir,
+      env: {
+        FAKE_CLAUDE_ARGS_FILE: argsFile,
+        FAKE_CLAUDE_STDIN_FILE: stdinFile
+      }
+    }
+  );
+
+  assert.equal(result.exitCode, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.kind, "plan");
+  assert.equal(payload.productMode, "plan");
+  assert.equal(payload.permissionMode, "plan");
+  assert.equal(payload.model, "opus");
+  assert.equal(payload.effort, "high");
+
+  const claudeArgs = (await readFile(argsFile, "utf8")).trim().split("\n");
+  assert.equal(claudeArgs[claudeArgs.indexOf("--permission-mode") + 1], "plan");
+
+  const stdinEvent = JSON.parse((await readFile(stdinFile, "utf8")).trim());
+  assert.match(stdinEvent.message.content[0].text, /planning, architecture, and systems-design/);
+  assert.match(stdinEvent.message.content[0].text, /Stay read-only/);
+  assert.match(stdinEvent.message.content[0].text, /Design the migration path/);
+});
+
+test("ui invokes Claude with design scaffold and write-capable default", async () => {
+  const binDir = await makeFakeClaudeBin();
+  const workDir = await mkdtemp(path.join(tmpdir(), "claude-ui-cwd-"));
+  const argsFile = path.join(workDir, "args.txt");
+  const stdinFile = path.join(workDir, "stdin.ndjson");
+
+  const result = await runCli(
+    [
+      "ui",
+      "--prompt",
+      "Polish the dashboard layout",
+      "--session-id",
+      "session-ui",
+      "--cwd",
+      workDir,
+      "--json"
+    ],
+    {
+      binDir,
+      env: {
+        FAKE_CLAUDE_ARGS_FILE: argsFile,
+        FAKE_CLAUDE_STDIN_FILE: stdinFile
+      }
+    }
+  );
+
+  assert.equal(result.exitCode, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.kind, "ui");
+  assert.equal(payload.productMode, "ui");
+  assert.equal(payload.permissionMode, "acceptEdits");
+
+  const claudeArgs = (await readFile(argsFile, "utf8")).trim().split("\n");
+  assert.equal(claudeArgs[claudeArgs.indexOf("--permission-mode") + 1], "acceptEdits");
+
+  const stdinEvent = JSON.parse((await readFile(stdinFile, "utf8")).trim());
+  assert.match(stdinEvent.message.content[0].text, /frontend UI and product-design specialist/);
+  assert.match(stdinEvent.message.content[0].text, /visual hierarchy/);
+  assert.match(stdinEvent.message.content[0].text, /Polish the dashboard layout/);
+});
+
+test("ui --plan invokes read-only UI critique", async () => {
+  const binDir = await makeFakeClaudeBin();
+  const workDir = await mkdtemp(path.join(tmpdir(), "claude-ui-cwd-"));
+  const argsFile = path.join(workDir, "args.txt");
+
+  const result = await runCli(
+    [
+      "design",
+      "--prompt",
+      "Critique the landing page",
+      "--plan",
+      "--session-id",
+      "session-ui-plan",
+      "--cwd",
+      workDir,
+      "--json"
+    ],
+    {
+      binDir,
+      env: {
+        FAKE_CLAUDE_ARGS_FILE: argsFile
+      }
+    }
+  );
+
+  assert.equal(result.exitCode, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.productMode, "ui");
+  assert.equal(payload.permissionMode, "plan");
+
+  const claudeArgs = (await readFile(argsFile, "utf8")).trim().split("\n");
+  assert.equal(claudeArgs[claudeArgs.indexOf("--permission-mode") + 1], "plan");
+});
+
 test("rescue tolerates malformed lines and unknown stream events", async () => {
   const binDir = await makeFakeClaudeBin();
 
