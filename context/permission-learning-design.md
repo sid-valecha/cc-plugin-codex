@@ -2,7 +2,14 @@
 
 ## Status
 
-Initial Milestone 5 implementation exists for `permissions analyze`, `permissions show`, and `permissions export --format allowed-tools`. The implementation intentionally does not pass `--allowedTools` automatically.
+Initial Milestone 5 implementation exists for `permissions analyze`, `permissions show`, and `permissions export --format allowed-tools`.
+
+Release-candidate polish added explicit rescue integration:
+
+- `--allow-tool <pattern>` passes a reviewed Claude Code allowed tool pattern.
+- `--allowed-tools-file <path>` reads patterns from a JSON array or newline file.
+- `--trust-local-dev` applies a curated local development preset for trusted repositories.
+- Claude tool-approval stops are reported as `permission_blocked`, not silent success.
 
 ## Goal
 
@@ -15,6 +22,7 @@ Help users turn repeated Claude Code permission prompts into a reviewable allowl
 - Do not write Claude settings without explicit user approval.
 - Do not treat permission learning as a replacement for Claude Code permission modes.
 - Do not build a broker, multiplexer, or interactive permission proxy.
+- Do not make `--trust-local-dev` the implicit default for untrusted repositories.
 
 ## Inputs
 
@@ -111,7 +119,19 @@ Two possible export targets should remain explicit:
 - Print `--allowedTools` arguments for a future rescue invocation.
 - Generate a Claude settings snippet for the user to copy or review.
 
-Initial implementation should prefer printing explicit command-line arguments because it is reversible and visible in job metadata.
+Initial implementation prefers explicit command-line arguments because it is reversible and visible in job metadata.
+
+Current rescue integration accepts:
+
+```bash
+node scripts/claude-companion.mjs rescue --prompt "<task>" --allow-tool "Bash(npm test*)"
+node scripts/claude-companion.mjs rescue --prompt "<task>" --allowed-tools-file ./allowed-tools.txt
+node scripts/claude-companion.mjs rescue --prompt "<task>" --trust-local-dev
+```
+
+`--trust-local-dev` is a convenience preset for trusted local repositories. It
+intentionally allows common file/search/edit tools and common local test
+commands, but does not bypass all permissions.
 
 ## Risk Rules
 
@@ -130,27 +150,42 @@ Automatically mark these as low or medium only when narrow:
 - formatter/linter commands from project scripts
 - repo-local build commands that do not publish or deploy
 
-## Suggested Future CLI
-
-These are deliberately future-facing and should not be treated as implemented:
+## Current CLI
 
 ```bash
 node scripts/claude-companion.mjs permissions analyze [--job-id <id>] [--cwd <path>]
 node scripts/claude-companion.mjs permissions show --proposal-id <id>
 node scripts/claude-companion.mjs permissions export --proposal-id <id> --format allowed-tools
-```
-
-Possible future rescue integration could accept:
-
-```bash
+node scripts/claude-companion.mjs rescue --prompt "<task>" --allow-tool "Bash(npm test*)"
 node scripts/claude-companion.mjs rescue --prompt "<task>" --allowed-tools-file <path>
+node scripts/claude-companion.mjs rescue --prompt "<task>" --trust-local-dev
 ```
+
+## Future Enhancements
+
+These are intentionally left open for OSS follow-up work:
+
+- Interactive permission bridge: surface Claude Code permission requests back to
+  Codex/user in real time and continue the same Claude subprocess after approval,
+  if Claude Code exposes a stable noninteractive permission-prompt protocol.
+- Settings writer: generate or update Claude Code settings only after explicit
+  user approval, with scoped project/user placement.
+- Preset expansion: add language/framework presets such as `python`, `node`,
+  `frontend`, or `go` after real-world usage shows the right narrow patterns.
+- Better event parsing: prefer structured Claude Code permission events over
+  text matching when the stream-json event shape is stable.
+- Risk UI: group proposed tools by low/medium/high risk before export.
+- Sandbox-aware mode: combine Claude Code sandbox settings with broader command
+  allowances when the environment is explicitly isolated.
 
 ## Test Plan
 
 Use fake-Claude fixtures only:
 
 - permission prompt event produces a narrow candidate
+- permission-blocked rescue output returns `status: permission_blocked`
+- `--allow-tool`, `--allowed-tools-file`, and `--trust-local-dev` pass expected
+  Claude Code arguments
 - unrelated events produce no candidates
 - destructive commands are marked high risk
 - duplicate candidates are merged with multiple source job ids
@@ -160,6 +195,6 @@ Use fake-Claude fixtures only:
 ## Open Questions
 
 - Exact Claude Code event shape for permission prompts in stream-json output.
-- Whether `--allowedTools` accepts all desired patterns in the current Claude Code version.
+- Whether a real-time permission continuation protocol exists for stable noninteractive use.
 - Whether exported snippets should target user-level settings, workspace settings, or command-line only.
 - How much redaction is needed before displaying raw command arguments in proposals.

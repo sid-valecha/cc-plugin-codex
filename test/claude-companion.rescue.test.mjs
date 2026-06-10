@@ -46,6 +46,9 @@ async function makeFakeClaudeBin() {
       "    echo '{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"delta\":{\"text\":\"Nested \"}}}'",
       "    echo '{\"type\":\"stream_event\",\"stream_event\":{\"event\":{\"type\":\"content_block_delta\",\"delta\":{\"text\":\"delta\"}}}}'",
       "    ;;",
+      "  permission-block)",
+      "    printf '%s\\n' '{\"type\":\"result\",\"result\":\"The user needs to approve running Python. Once approved, the command to run is:\\n\\n```bash\\npython -m unittest test_calculator -v\\n```\"}'",
+      "    ;;",
       "  empty)",
       "    ;;",
       "  *)",
@@ -165,6 +168,76 @@ test("rescue invokes Claude with stream-json flags and user prompt", async () =>
       ]
     }
   });
+});
+
+test("rescue passes allowed tools and trusted local dev preset to Claude", async () => {
+  const binDir = await makeFakeClaudeBin();
+  const workDir = await mkdtemp(path.join(tmpdir(), "claude-rescue-cwd-"));
+  const argsFile = path.join(workDir, "args.txt");
+  const allowedToolsFile = path.join(workDir, "allowed-tools.json");
+  await writeFile(allowedToolsFile, `${JSON.stringify(["Bash(custom check*)"])}\n`, "utf8");
+
+  const result = await runCli(
+    [
+      "rescue",
+      "--prompt",
+      "Fix and verify",
+      "--trust-local-dev",
+      "--allow-tool",
+      "Bash(pytest*)",
+      "--allowed-tools-file",
+      allowedToolsFile,
+      "--session-id",
+      "session-tools",
+      "--cwd",
+      workDir,
+      "--json"
+    ],
+    {
+      binDir,
+      env: {
+        FAKE_CLAUDE_ARGS_FILE: argsFile
+      }
+    }
+  );
+
+  assert.equal(result.exitCode, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.trustedLocalDev, true);
+  assert.ok(payload.allowedTools.includes("Read"));
+  assert.ok(payload.allowedTools.includes("Edit"));
+  assert.ok(payload.allowedTools.includes("Bash(python3 -m unittest*)"));
+  assert.ok(payload.allowedTools.includes("Bash(pytest*)"));
+  assert.ok(payload.allowedTools.includes("Bash(custom check*)"));
+
+  const claudeArgs = (await readFile(argsFile, "utf8")).trim().split("\n");
+  const allowedIndex = claudeArgs.indexOf("--allowedTools");
+  assert.notEqual(allowedIndex, -1);
+  assert.ok(claudeArgs.slice(allowedIndex + 1).includes("Bash(pytest*)"));
+  assert.ok(claudeArgs.slice(allowedIndex + 1).includes("Bash(custom check*)"));
+});
+
+test("rescue reports Claude tool approval requests as permission_blocked", async () => {
+  const binDir = await makeFakeClaudeBin();
+
+  const result = await runCli(["rescue", "--prompt", "Fix and test", "--json"], {
+    binDir,
+    env: {
+      FAKE_CLAUDE_STREAM: "permission-block"
+    }
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.stderr, "");
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.ok, false);
+  assert.equal(payload.status, "permission_blocked");
+  assert.equal(payload.permissionBlock.blockedTool, "Bash(python -m unittest test_calculator -v)");
+  assert.match(payload.permissionBlock.guidance.join("\n"), /--trust-local-dev/);
+  assert.match(
+    payload.permissionBlock.guidance.join("\n"),
+    /--allow-tool "Bash\(python -m unittest test_calculator -v\)"/
+  );
 });
 
 test("rescue supports bare isolation mode when requested", async () => {
