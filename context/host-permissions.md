@@ -33,6 +33,30 @@ example, a read-only environment may approve `plan` and `review` but not
 write-capable `rescue` or `ui`. Stricter adversarial review should usually use
 `review --adversarial`, so it does not need a separate first-run approval.
 
+## Smooth Local Profile
+
+For unmanaged local Codex installs, users can make approval prompts user-owned
+instead of automatic-reviewer-owned with a profile:
+
+```bash
+cat > ~/.codex/claude-companion.config.toml <<'EOF'
+approval_policy = "on-request"
+approvals_reviewer = "user"
+sandbox_mode = "workspace-write"
+EOF
+```
+
+Then start Codex with:
+
+```bash
+codex --profile claude-companion
+```
+
+On the first live Claude call, approve the narrow plugin delegation command
+Codex shows. This is the preferred frictionless path for personal/local users:
+one profile plus one narrow approval, then normal `claude-rescue`,
+`claude-plan`, `claude-ui`, and `claude-review` use.
+
 ## Policy Blocks
 
 If the host or tenant policy blocks external disclosure, the plugin must not
@@ -52,6 +76,12 @@ This is separate from `permission_blocked`:
   disclosure was not allowed.
 - `permission_blocked` means Claude Code started successfully but then requested
   approval for one of its own tools during noninteractive execution.
+
+If a managed organization forces `approvals_reviewer = "auto_review"` and that
+reviewer denies external Claude disclosure, the user cannot locally configure
+around it. An admin or workspace policy must allow user-reviewed approvals,
+permit the narrow plugin prefixes, or otherwise approve this external Claude
+delegation workflow.
 
 ## Auth Is Separate
 

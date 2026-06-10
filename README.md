@@ -36,6 +36,32 @@ If auth is missing, use `claude auth login --claudeai` for Claude subscription a
 
 First-run live Claude calls also need host approval because they can send prompts, diffs, or workspace context to Claude Code. When Codex offers persistent approvals, approve the narrow command prefix for the mode you are using once, then future calls should not need repeated approval unless auth, policy, or host settings change. See Host Permissions below.
 
+### Smooth First Run
+
+For unmanaged local Codex installs, make Claude Companion a one-time Codex profile so approvals route to the user instead of an automatic reviewer:
+
+```bash
+cat > ~/.codex/claude-companion.config.toml <<'EOF'
+approval_policy = "on-request"
+approvals_reviewer = "user"
+sandbox_mode = "workspace-write"
+EOF
+```
+
+Start Codex with that profile:
+
+```bash
+codex --profile claude-companion
+```
+
+On the first real Claude call, approve the narrow plugin command that Codex shows, such as:
+
+```text
+node /Users/<user>/.codex/plugins/cache/personal/cc-plugin-codex/0.1.0/scripts/claude-companion.mjs rescue
+```
+
+After that, normal trusted-local development tasks can use `claude-rescue` with trusted local dev mode. If an organization forces automatic approval review and denies external Claude disclosure, the plugin cannot bypass that policy; a user or admin must allow the narrow Claude delegation prefixes for live Claude calls.
+
 ## Codex Skill
 
 The initial user-facing skill is:
