@@ -9,6 +9,8 @@ Use this skill when the user wants Claude Code's help building or polishing fron
 
 Real UI/design calls can send prompts and workspace context to Claude Code and may spend quota. If the Codex host offers persistent approvals, ask the user to approve the narrow prefixes `node scripts/claude-companion.mjs ui` and `node scripts/claude-companion.mjs design` instead of broad commands like `node`. If host policy blocks external disclosure, do not bypass it.
 
+If the host approval system denies the UI/design command because it would disclose workspace context to Claude, stop and report that Claude UI/design was blocked. Do not silently complete the task locally with Codex during a Claude integration smoke test. Only fall back to local Codex implementation if the user explicitly asks for a local fallback after the block is reported.
+
 Run a write-capable UI/design task:
 
 ```bash
@@ -39,3 +41,5 @@ Behavior:
 - Use `--effort low` for cheap smoke checks.
 
 If Claude Code requests tool approval during noninteractive UI work, the plugin reports `permission_blocked`. Surface the blocked tool and suggest `--trust-local-dev` only for trusted local repositories, or a narrower `--allow-tool` pattern.
+
+Host/Codex approval and Claude Code tool approval are separate layers. Host denial happens before Claude runs; `permission_blocked` happens after Claude starts and requests its own tool approval.

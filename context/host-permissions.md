@@ -40,6 +40,19 @@ try to work around that block. In that environment, only local/non-billable
 commands such as `setup`, `status`, `result`, `cancel`, and permission proposal
 inspection are expected to work.
 
+When a Claude delegation command is denied by the Codex host or automatic
+approval reviewer, treat that denial as the result of the plugin smoke test.
+Do not report a fallback Codex implementation as a successful Claude run. A
+local Codex fallback can still be useful, but it should happen only after the
+user explicitly asks to proceed without Claude.
+
+This is separate from `permission_blocked`:
+
+- Host denial means Codex did not start a Claude call because external
+  disclosure was not allowed.
+- `permission_blocked` means Claude Code started successfully but then requested
+  approval for one of its own tools during noninteractive execution.
+
 ## Auth Is Separate
 
 Host permission is separate from Claude auth:

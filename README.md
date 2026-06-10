@@ -298,6 +298,7 @@ Sandbox and network prompts:
 - `conda create`, dependency installation, `git push`, `gh pr create`, and real Claude calls need network access.
 - Real rescue, plan, UI/design, review, and enabled Stop-hook review calls send prompts, diffs, or workspace context to Claude Code and may spend quota.
 - If Codex blocks a real Claude call under external-disclosure policy, that environment cannot use the live Claude delegation commands until the user or organization allows them.
+- If a Codex host or automatic approval reviewer denies the Claude delegation command, treat that as a blocked Claude run. Do not count a local Codex fallback as a successful plugin smoke test unless the user explicitly chose to proceed without Claude.
 - If Claude Code blocks its own tool call during noninteractive rescue/UI work, the plugin reports `permission_blocked`. Rerun with a narrow `--allow-tool`, an approved `--allowed-tools-file`, or `--trust-local-dev` for trusted local repositories.
 
 Model aliases and usage:
