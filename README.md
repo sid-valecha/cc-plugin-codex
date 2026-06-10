@@ -201,6 +201,7 @@ Claude auth:
 
 - `node scripts/claude-companion.mjs setup --json` should show `claudeAuth.ok: true`.
 - If it reports unauthenticated, run `claude auth login --claudeai` for Claude subscription auth.
+- If `claude auth status --text` works in a normal terminal but plugin setup reports unauthenticated, Codex's sandbox may not be able to read Claude's OAuth/keychain session. Approve the Claude-invoking command to run outside the sandbox, or use bare-compatible auth.
 - For strict `--bare` mode, use bare-compatible auth such as `claude setup-token`, `ANTHROPIC_API_KEY`, Bedrock, Vertex, or `apiKeyHelper`.
 - A rescue result like `Not logged in · Please run /login` means the plugin reached Claude Code, but Claude Code rejected the request before model execution.
 
