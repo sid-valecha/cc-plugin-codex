@@ -320,11 +320,11 @@ This plugin mirrors the core shape of [`openai/codex-plugin-cc`](https://github.
 | Session handoff | `codex resume <session>` guidance | Claude session id is stored and `--resume` continues the latest workspace rescue session | Partially implemented |
 | Install/update flow | Claude plugin marketplace install | local marketplace and cachebuster reinstall guidance | Documented |
 | Default model policy | Codex config-driven | Claude Code args plus skill guidance | Partially implemented |
-| Permission learning | Deferred | Deferred allowlist idea | Remaining parity work |
+| Permission learning | Deferred | deferred `--allowedTools` proposal design in `context/permission-learning-design.md` | Designed, not implemented |
 
 Known non-parity gaps to close before release candidate:
 
-- Design the deferred permission-learning flow for recurring Claude permission prompts and `--allowedTools`.
+- Implement permission-learning analysis/export later if the deferred design is accepted.
 
 ## Development
 
