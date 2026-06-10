@@ -2,7 +2,7 @@
 
 ## Status
 
-Deferred design for Milestone 5. This document intentionally does not implement permission learning or pass `--allowedTools` automatically.
+Initial Milestone 5 implementation exists for `permissions analyze`, `permissions show`, and `permissions export --format allowed-tools`. The implementation intentionally does not pass `--allowedTools` automatically.
 
 ## Goal
 
@@ -140,7 +140,7 @@ node scripts/claude-companion.mjs permissions show --proposal-id <id>
 node scripts/claude-companion.mjs permissions export --proposal-id <id> --format allowed-tools
 ```
 
-Future rescue integration could accept:
+Possible future rescue integration could accept:
 
 ```bash
 node scripts/claude-companion.mjs rescue --prompt "<task>" --allowed-tools-file <path>

@@ -451,3 +451,197 @@ test("status marks stale running jobs as failed", async () => {
   assert.equal(payload.jobs[0].status, "failed");
   assert.match(payload.jobs[0].summary, /Runner process/);
 });
+
+async function writePermissionJob(stateDir, job) {
+  await mkdir(path.join(stateDir, "logs"), { recursive: true });
+  await mkdir(path.join(stateDir, "results"), { recursive: true });
+  await mkdir(path.join(stateDir, "sessions"), { recursive: true });
+  const fullJob = {
+    kind: "rescue",
+    status: "completed",
+    cwd: ROOT,
+    workspaceRoot: ROOT,
+    claudeSessionId: `session-${job.id}`,
+    model: "sonnet",
+    permissionMode: "acceptEdits",
+    isolation: "standard",
+    createdAt: "2026-06-10T00:00:00.000Z",
+    updatedAt: "2026-06-10T00:00:00.000Z",
+    logPath: path.join(stateDir, "logs", `${job.id}.ndjson`),
+    resultPath: path.join(stateDir, "results", `${job.id}.md`),
+    sessionPath: path.join(stateDir, "sessions", `${job.id}.json`),
+    ...job
+  };
+  const existingJobsPath = path.join(stateDir, "jobs.json");
+  let jobs = [];
+  try {
+    jobs = JSON.parse(await readFile(existingJobsPath, "utf8")).jobs;
+  } catch {
+    jobs = [];
+  }
+  jobs.push(fullJob);
+  await writeFile(existingJobsPath, `${JSON.stringify({ version: 1, jobs }, null, 2)}\n`, "utf8");
+  await writeFile(fullJob.logPath, job.logText, "utf8");
+  await writeFile(fullJob.resultPath, "done\n", "utf8");
+}
+
+test("permissions analyze writes reviewable proposal from plugin-owned logs", async () => {
+  const stateDir = await mkdtemp(path.join(tmpdir(), "claude-permissions-state-"));
+  await writePermissionJob(stateDir, {
+    id: "rescue-perms",
+    logText: [
+      JSON.stringify({
+        type: "permission_request",
+        message: "Claude requires permission before using this tool.",
+        toolName: "Bash",
+        command: "npm test"
+      }),
+      "Permission denied for Bash(rm -rf build)"
+    ].join("\n")
+  });
+
+  const result = await runCli([
+    "permissions",
+    "analyze",
+    "--job-id",
+    "rescue-perms",
+    "--state-dir",
+    stateDir,
+    "--json"
+  ]);
+  assert.equal(result.exitCode, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.ok, true);
+  assert.equal(payload.proposal.approved, false);
+  assert.equal(payload.proposal.approvalRequired, true);
+  assert.equal(payload.proposal.sourceJobs[0], "rescue-perms");
+  assert.equal(payload.proposal.candidateCount, 2);
+  assert.equal(payload.proposal.candidates[0].pattern, "Bash(npm test)");
+  assert.equal(payload.proposal.candidates[0].risk, "low");
+  assert.equal(payload.proposal.candidates[1].pattern, "Bash(rm -rf build)");
+  assert.equal(payload.proposal.candidates[1].risk, "high");
+  assert.match(payload.nextCommands.show, /permissions show/);
+  assert.match(payload.nextCommands.export, /permissions export/);
+
+  const proposalFile = JSON.parse(await readFile(payload.proposalPath, "utf8"));
+  assert.equal(proposalFile.id, payload.proposal.id);
+
+  const human = await runCli([
+    "permissions",
+    "show",
+    "--proposal-id",
+    payload.proposal.id,
+    "--state-dir",
+    stateDir
+  ]);
+  assert.equal(human.exitCode, 0, human.stderr);
+  assert.match(human.stdout, /Permission proposal:/);
+  assert.match(human.stdout, /\[low\] Bash\(npm test\)/);
+  assert.match(human.stdout, /\[high\] Bash\(rm -rf build\)/);
+});
+
+test("permissions analyze writes empty proposal for unrelated logs", async () => {
+  const stateDir = await mkdtemp(path.join(tmpdir(), "claude-permissions-state-"));
+  await writePermissionJob(stateDir, {
+    id: "rescue-no-perms",
+    logText: JSON.stringify({ type: "result", result: "No permission prompt here." })
+  });
+
+  const result = await runCli([
+    "permissions",
+    "analyze",
+    "--job-id",
+    "rescue-no-perms",
+    "--state-dir",
+    stateDir,
+    "--json"
+  ]);
+  assert.equal(result.exitCode, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.proposal.candidateCount, 0);
+  assert.deepEqual(payload.proposal.candidates, []);
+});
+
+test("permissions analyze merges duplicate candidates across workspace jobs", async () => {
+  const stateDir = await mkdtemp(path.join(tmpdir(), "claude-permissions-state-"));
+  await writePermissionJob(stateDir, {
+    id: "rescue-perms-a",
+    logText: "Permission requested for Bash(npm test)"
+  });
+  await writePermissionJob(stateDir, {
+    id: "rescue-perms-b",
+    logText: "Approval needed for Bash(npm test)"
+  });
+
+  const result = await runCli(["permissions", "analyze", "--state-dir", stateDir, "--json"]);
+  assert.equal(result.exitCode, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.proposal.candidateCount, 1);
+  assert.deepEqual(payload.proposal.candidates[0].sourceJobIds, [
+    "rescue-perms-a",
+    "rescue-perms-b"
+  ]);
+  assert.equal(payload.proposal.candidates[0].sources.length, 2);
+});
+
+test("permissions export refuses unapproved proposals and exports approved allowed tools", async () => {
+  const stateDir = await mkdtemp(path.join(tmpdir(), "claude-permissions-state-"));
+  await writePermissionJob(stateDir, {
+    id: "rescue-export",
+    logText: "Permission requested for Bash(npm test)"
+  });
+  const analyze = await runCli([
+    "permissions",
+    "analyze",
+    "--job-id",
+    "rescue-export",
+    "--state-dir",
+    stateDir,
+    "--json"
+  ]);
+  assert.equal(analyze.exitCode, 0, analyze.stderr);
+  const proposal = JSON.parse(analyze.stdout).proposal;
+
+  const refused = await runCli([
+    "permissions",
+    "export",
+    "--proposal-id",
+    proposal.id,
+    "--state-dir",
+    stateDir,
+    "--json"
+  ]);
+  assert.equal(refused.exitCode, 1);
+  assert.match(refused.stderr, /not approved/);
+
+  const proposalPath = path.join(stateDir, "permissions", `${proposal.id}.json`);
+  const approved = JSON.parse(await readFile(proposalPath, "utf8"));
+  approved.approved = true;
+  await writeFile(proposalPath, `${JSON.stringify(approved, null, 2)}\n`, "utf8");
+
+  const exported = await runCli([
+    "permissions",
+    "export",
+    "--proposal-id",
+    proposal.id,
+    "--state-dir",
+    stateDir,
+    "--json"
+  ]);
+  assert.equal(exported.exitCode, 0, exported.stderr);
+  const payload = JSON.parse(exported.stdout);
+  assert.deepEqual(payload.allowedTools, ["Bash(npm test)"]);
+  assert.deepEqual(payload.argv, ["--allowedTools", "Bash(npm test)"]);
+
+  const human = await runCli([
+    "permissions",
+    "export",
+    "--proposal-id",
+    proposal.id,
+    "--state-dir",
+    stateDir
+  ]);
+  assert.equal(human.exitCode, 0, human.stderr);
+  assert.match(human.stdout, /Allowed tools:/);
+  assert.match(human.stdout, /"Bash\(npm test\)"/);
+});
