@@ -21,6 +21,7 @@ Hard rules:
 - Do not make hook integration mandatory for setup/rescue/review.
 - Do not run real Claude calls unless the user explicitly approves sending prompts/diffs to Claude and spending quota.
 - If `claude auth status --text` works in the user's terminal but plugin setup reports unauthenticated, diagnose it as sandbox/keychain visibility. Run Claude-invoking commands only with user approval outside the sandbox, or use bare-compatible auth such as `claude setup-token`, `ANTHROPIC_API_KEY`, provider credentials, or `apiKeyHelper`.
+- Real Claude calls also require host permission for external AI disclosure. If the host or tenant policy blocks that disclosure, do not try to bypass it. Use narrow persistent approvals for plugin commands when the host supports them; see `context/host-permissions.md`.
 
 Implementation preferences:
 

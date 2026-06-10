@@ -224,6 +224,25 @@ Use `--model opus` only for serious validation when the cost and quota impact ar
 
 The recommended release-candidate validation order and the next product-layer ideas are tracked in `context/next-roadmap.md`.
 
+## Host Permissions
+
+Real Claude calls require the Codex host to allow this plugin to invoke Claude Code as an external AI subprocess. These calls can send prompts, diffs, or workspace context to Claude Code and may spend quota. Claude auth alone is not enough; host policy must also allow the call.
+
+When Codex offers persistent command approvals, approve narrow plugin command prefixes instead of broad commands like `node`:
+
+```text
+node scripts/claude-companion.mjs rescue
+node scripts/claude-companion.mjs plan
+node scripts/claude-companion.mjs ui
+node scripts/claude-companion.mjs design
+node scripts/claude-companion.mjs review
+node scripts/claude-companion.mjs adversarial-review
+```
+
+Only approve the modes you want available. For example, a read-only setup can approve `plan` and `review` without approving write-capable `rescue` or `ui`. If tenant policy blocks external disclosure, the plugin must not bypass it; local commands such as `setup`, `status`, `result`, `cancel`, and permission proposal inspection can still work.
+
+More detail is tracked in `context/host-permissions.md`.
+
 ## Troubleshooting
 
 Claude auth:
@@ -245,7 +264,8 @@ Sandbox and network prompts:
 
 - `npm test` and fake-Claude tests should run without network access.
 - `conda create`, dependency installation, `git push`, `gh pr create`, and real Claude calls need network access.
-- Real rescue and review calls send prompts or diffs to Claude Code and may spend quota.
+- Real rescue, plan, UI/design, review, adversarial review, and enabled Stop-hook review calls send prompts, diffs, or workspace context to Claude Code and may spend quota.
+- If Codex blocks a real Claude call under external-disclosure policy, that environment cannot use the live Claude delegation commands until the user or organization allows them.
 
 Model aliases and usage:
 
