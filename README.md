@@ -4,6 +4,8 @@ This repository contains a Codex plugin that lets Codex use Claude Code as a loc
 
 ## Quickstart
 
+In normal use, ask Codex to use the plugin skills (`claude-setup`, `claude-rescue`, `claude-plan`, `claude-ui`, `claude-review`, and job-management skills). The raw Node commands below are for development, validation, and debugging.
+
 Run the setup check from the plugin root:
 
 ```bash
@@ -190,6 +192,8 @@ codex plugin add cc-plugin-codex@<marketplace-name>
 ```
 
 Start a new Codex thread after reinstalling so Codex picks up updated skills, hooks, and metadata.
+
+For repo/team distribution, use a parent marketplace root with this plugin under `plugins/cc-plugin-codex/`, then install that marketplace with `codex plugin marketplace add`. See `context/marketplace-readiness.md` for the recommended layout, Git/local install commands, and the current public-directory/MCP decision.
 
 ## Validation And Smoke Tests
 

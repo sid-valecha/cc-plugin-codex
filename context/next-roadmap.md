@@ -14,6 +14,8 @@ Run release-candidate validation in this order:
    - `codex plugin add cc-plugin-codex@personal`
    - confirm the installed cache contains all skills, including `claude-permissions`
    - start a new Codex thread after reinstalling so skill metadata is reloaded
+   - for repo/team distribution, follow `context/marketplace-readiness.md`
+     instead of assuming this plugin repo is also the marketplace root
 3. Non-billable real environment checks:
    - `node scripts/claude-companion.mjs setup --json`
    - `node scripts/claude-companion.mjs status --limit 5`
@@ -86,3 +88,17 @@ Potential implementation:
 - Do not make skill routing automatic until the explicit path is reliable.
 
 Estimated effort: 0.5-1 day for investigation and a minimal explicit bridge.
+
+## Marketplace Readiness
+
+Current recommendation is documented in `context/marketplace-readiness.md`:
+
+- keep personal/local marketplace installs for development and release-candidate
+  validation
+- use a parent repo/team marketplace root for CLI/dev distribution
+- use workspace sharing for selected teammates in the Codex app
+- wait on the public OpenAI Plugin Directory until public self-serve publishing
+  is available and the plugin is release-candidate stable
+- do not add MCP just to invoke Claude Code; revisit MCP only for structured
+  tools, persistent services, shared state, or integrations such as Figma/browser
+  tooling
