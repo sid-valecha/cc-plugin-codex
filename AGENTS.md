@@ -20,6 +20,7 @@ Hard rules:
 - Do not introduce a broker/multiplexer before the core job runner is stable.
 - Do not make hook integration mandatory for setup/rescue/review.
 - Do not run real Claude calls unless the user explicitly approves sending prompts/diffs to Claude and spending quota.
+- If `claude auth status --text` works in the user's terminal but plugin setup reports unauthenticated, diagnose it as sandbox/keychain visibility. Run Claude-invoking commands only with user approval outside the sandbox, or use bare-compatible auth such as `claude setup-token`, `ANTHROPIC_API_KEY`, provider credentials, or `apiKeyHelper`.
 
 Implementation preferences:
 

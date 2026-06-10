@@ -133,6 +133,9 @@ test("setup reports auth guidance when Claude auth is not ready", async () => {
   assert.equal(auth.ok, false);
   assert.equal(auth.status, "unauthenticated");
   assert.match(payload.guidance.join("\n"), /claude auth login/);
+  assert.match(payload.guidance.join("\n"), /normal terminal/);
+  assert.match(payload.guidance.join("\n"), /sandbox/);
+  assert.match(payload.guidance.join("\n"), /OAuth\/keychain/);
   assert.match(payload.guidance.join("\n"), /ANTHROPIC_API_KEY/);
   assert.match(payload.guidance.join("\n"), /CLAUDE_CODE_USE_BEDROCK=1/);
   assert.match(payload.guidance.join("\n"), /CLAUDE_CODE_USE_VERTEX=1/);
