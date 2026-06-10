@@ -55,6 +55,7 @@ const STALE_RUNNING_GRACE_MS = 10000;
 const DEFAULT_WAIT_TIMEOUT_MS = 300000;
 const WAIT_POLL_INTERVAL_MS = 100;
 const TERMINAL_JOB_STATUSES = new Set(["completed", "failed", "cancelled"]);
+const RESUMABLE_JOB_STATUSES = new Set(["completed", "failed"]);
 const STOP_REVIEW_ENABLE_FILE = path.join(".codex", "claude-stop-review.enabled");
 const BLOCKING_SEVERITIES = new Set(["critical", "high"]);
 
@@ -78,6 +79,8 @@ function parseArgs(argv) {
     plan: false,
     background: false,
     wait: false,
+    resume: false,
+    fresh: false,
     waitTimeoutMs: DEFAULT_WAIT_TIMEOUT_MS,
     bare: false,
     adversarial: false,
@@ -176,6 +179,14 @@ function parseArgs(argv) {
       options.wait = true;
       continue;
     }
+    if (arg === "--resume") {
+      options.resume = true;
+      continue;
+    }
+    if (arg === "--fresh") {
+      options.fresh = true;
+      continue;
+    }
     if (arg === "--wait-timeout-ms") {
       options.waitTimeoutMs = Number.parseInt(readOptionValue(argv, index, arg), 10);
       index += 1;
@@ -240,6 +251,8 @@ function usage() {
     "  --background            Start a managed background job.",
     "  --wait                  With --background, wait for the job to finish.",
     "  --wait-timeout-ms <n>   Maximum --wait duration. Defaults to 300000.",
+    "  --resume                Continue the latest resumable rescue session in this workspace.",
+    "  --fresh                 Explicitly start a new rescue session.",
     "  --bare                  Use Claude bare mode for API-key/helper/provider auth.",
     "",
     "Job options:",
@@ -654,13 +667,15 @@ async function runRescue(options) {
   if (options.wait && !options.background) {
     throw new Error("rescue --wait requires --background");
   }
+  validateRescueSessionOptions(options);
   const waitTimeoutMs = normalizeWaitTimeoutMs(options.waitTimeoutMs);
 
   const model = normalizeModel(options.model);
   const effort = normalizeEffort(options.effort);
   const permissionMode = resolvePermissionMode(options);
-  const sessionId = options.sessionId?.trim() || randomUUID();
   const cwd = await resolveCwd(options.cwd);
+  const session = await resolveRescueSession(options, cwd);
+  const sessionId = session.sessionId;
 
   if (options.background) {
     const started = await startBackgroundRescue({
@@ -669,7 +684,7 @@ async function runRescue(options) {
       model,
       effort,
       permissionMode,
-      sessionId
+      session
     });
     if (!options.wait) {
       return started;
@@ -703,6 +718,8 @@ async function runRescue(options) {
     permissionMode,
     isolation: options.bare ? "bare" : "standard",
     sessionId,
+    sessionMode: session.mode,
+    resumedFromJobId: session.resumedFromJobId,
     command: ["claude", ...invocation.args],
     exitCode: invocation.exitCode,
     signal: invocation.signal,
@@ -717,6 +734,67 @@ function normalizeWaitTimeoutMs(timeoutMs) {
     throw new Error("--wait-timeout-ms must be a positive integer");
   }
   return timeoutMs;
+}
+
+function validateRescueSessionOptions(options) {
+  if (options.resume && options.fresh) {
+    throw new Error("rescue cannot use --resume and --fresh together");
+  }
+  if (options.resume && options.sessionId) {
+    throw new Error("rescue cannot use --resume with --session-id; choose one session source");
+  }
+  if (options.fresh && options.sessionId) {
+    throw new Error("rescue cannot use --fresh with --session-id; choose one session source");
+  }
+}
+
+async function resolveRescueSession(options, cwd) {
+  if (options.sessionId?.trim()) {
+    return {
+      sessionId: options.sessionId.trim(),
+      mode: "explicit",
+      resumedFromJobId: null
+    };
+  }
+  if (options.resume) {
+    const stateDir = resolveStateDir(options.stateDir);
+    const jobs = await refreshStaleJobs(stateDir, await readJobs(stateDir));
+    const job = selectResumableJob(jobs, cwd);
+    if (!job) {
+      throw new Error(
+        `No resumable Claude rescue session found for ${cwd}. Run a fresh rescue first, or omit --resume.`
+      );
+    }
+    return {
+      sessionId: job.claudeSessionId,
+      mode: "resume",
+      resumedFromJobId: job.id
+    };
+  }
+  return {
+    sessionId: randomUUID(),
+    mode: options.fresh ? "fresh" : "new",
+    resumedFromJobId: null
+  };
+}
+
+function selectResumableJob(jobs, cwd) {
+  return jobs
+    .filter((job) => {
+      if (job.kind !== "rescue" || !job.claudeSessionId) {
+        return false;
+      }
+      if (!RESUMABLE_JOB_STATUSES.has(job.status)) {
+        return false;
+      }
+      return normalizeJobWorkspace(job) === cwd;
+    })
+    .sort((left, right) => (right.updatedAt || "").localeCompare(left.updatedAt || ""))[0];
+}
+
+function normalizeJobWorkspace(job) {
+  const workspace = job.workspaceRoot || job.cwd;
+  return workspace ? path.resolve(workspace) : "";
 }
 
 function parseClaudeStream(stdout) {
@@ -860,6 +938,10 @@ function renderHumanRescue(result) {
   const lines = [];
   if (result.wait) {
     lines.push(`Claude ${result.job.kind} job ${result.job.id}: ${result.status}`);
+    lines.push(`Session: ${result.job.claudeSessionId || "unknown"} (${result.job.sessionMode || "unknown"})`);
+    if (result.job.resumedFromJobId) {
+      lines.push(`Resumed from job: ${result.job.resumedFromJobId}`);
+    }
     if (result.status === "timed_out") {
       lines.push(`Wait timed out after ${result.wait.timeoutMs}ms.`);
       lines.push(`Result: ${result.job.resultPath}`);
@@ -876,9 +958,19 @@ function renderHumanRescue(result) {
   if (result.job && result.status === "running") {
     lines.push(`Started Claude ${result.job.kind} job ${result.job.id}`);
     lines.push(`Status: ${result.job.status}`);
+    lines.push(`Session: ${result.job.claudeSessionId || "unknown"} (${result.job.sessionMode || "unknown"})`);
+    if (result.job.resumedFromJobId) {
+      lines.push(`Resumed from job: ${result.job.resumedFromJobId}`);
+    }
     lines.push(`Result: ${result.job.resultPath}`);
     return lines.join("\n");
   }
+  lines.push(`Claude rescue ${result.status}.`);
+  lines.push(`Session: ${result.sessionId || "unknown"} (${result.sessionMode || "unknown"})`);
+  if (result.resumedFromJobId) {
+    lines.push(`Resumed from job: ${result.resumedFromJobId}`);
+  }
+  lines.push("");
   if (result.result) {
     lines.push(result.result);
   } else {
@@ -1081,7 +1173,7 @@ function summarizeResult(result) {
   return result.trim().replace(/\s+/g, " ").slice(0, 160);
 }
 
-async function startBackgroundRescue({ options, cwd, model, effort, permissionMode, sessionId }) {
+async function startBackgroundRescue({ options, cwd, model, effort, permissionMode, session }) {
   const stateDir = resolveStateDir(options.stateDir);
   await ensureStateDir(stateDir);
   const jobId = `rescue-${Date.now()}-${randomUUID().slice(0, 8)}`;
@@ -1093,7 +1185,9 @@ async function startBackgroundRescue({ options, cwd, model, effort, permissionMo
     status: "running",
     cwd,
     workspaceRoot: cwd,
-    claudeSessionId: sessionId,
+    claudeSessionId: session.sessionId,
+    sessionMode: session.mode,
+    resumedFromJobId: session.resumedFromJobId,
     runnerPid: null,
     childPid: null,
     model,

@@ -262,6 +262,201 @@ test("rescue supports plan permission mode", async () => {
   assert.equal(payload.permissionMode, "plan");
 });
 
+test("rescue --resume uses the latest resumable session for the workspace", async () => {
+  const binDir = await makeFakeClaudeBin();
+  const workDir = await mkdtemp(path.join(tmpdir(), "claude-rescue-cwd-"));
+  const otherDir = await mkdtemp(path.join(tmpdir(), "claude-rescue-other-cwd-"));
+  const stateDir = await mkdtemp(path.join(tmpdir(), "claude-rescue-state-"));
+  const argsFile = path.join(workDir, "args.txt");
+  await writeFile(
+    path.join(stateDir, "jobs.json"),
+    `${JSON.stringify(
+      {
+        version: 1,
+        jobs: [
+          {
+            id: "rescue-older",
+            kind: "rescue",
+            status: "completed",
+            cwd: workDir,
+            workspaceRoot: workDir,
+            claudeSessionId: "session-older",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            createdAt: "2026-01-01T00:00:00.000Z"
+          },
+          {
+            id: "rescue-other-workspace",
+            kind: "rescue",
+            status: "completed",
+            cwd: otherDir,
+            workspaceRoot: otherDir,
+            claudeSessionId: "session-other",
+            updatedAt: "2026-01-03T00:00:00.000Z",
+            createdAt: "2026-01-03T00:00:00.000Z"
+          },
+          {
+            id: "rescue-latest",
+            kind: "rescue",
+            status: "completed",
+            cwd: workDir,
+            workspaceRoot: workDir,
+            claudeSessionId: "session-latest",
+            updatedAt: "2026-01-02T00:00:00.000Z",
+            createdAt: "2026-01-02T00:00:00.000Z"
+          }
+        ]
+      },
+      null,
+      2
+    )}\n`,
+    "utf8"
+  );
+
+  const result = await runCli(
+    [
+      "rescue",
+      "--prompt",
+      "Continue the task",
+      "--resume",
+      "--cwd",
+      workDir,
+      "--state-dir",
+      stateDir,
+      "--json"
+    ],
+    {
+      binDir,
+      env: {
+        FAKE_CLAUDE_ARGS_FILE: argsFile
+      }
+    }
+  );
+
+  assert.equal(result.exitCode, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.sessionId, "session-latest");
+  assert.equal(payload.sessionMode, "resume");
+  assert.equal(payload.resumedFromJobId, "rescue-latest");
+
+  const claudeArgs = (await readFile(argsFile, "utf8")).trim().split("\n");
+  assert.equal(claudeArgs[claudeArgs.indexOf("--session-id") + 1], "session-latest");
+});
+
+test("rescue --fresh creates a new session even when a resumable session exists", async () => {
+  const binDir = await makeFakeClaudeBin();
+  const workDir = await mkdtemp(path.join(tmpdir(), "claude-rescue-cwd-"));
+  const stateDir = await mkdtemp(path.join(tmpdir(), "claude-rescue-state-"));
+  await writeFile(
+    path.join(stateDir, "jobs.json"),
+    `${JSON.stringify(
+      {
+        version: 1,
+        jobs: [
+          {
+            id: "rescue-existing",
+            kind: "rescue",
+            status: "completed",
+            cwd: workDir,
+            workspaceRoot: workDir,
+            claudeSessionId: "session-existing",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            createdAt: "2026-01-01T00:00:00.000Z"
+          }
+        ]
+      },
+      null,
+      2
+    )}\n`,
+    "utf8"
+  );
+
+  const result = await runCli(
+    [
+      "rescue",
+      "--prompt",
+      "Start over",
+      "--fresh",
+      "--cwd",
+      workDir,
+      "--state-dir",
+      stateDir,
+      "--json"
+    ],
+    { binDir }
+  );
+
+  assert.equal(result.exitCode, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.sessionMode, "fresh");
+  assert.notEqual(payload.sessionId, "session-existing");
+  assert.equal(payload.resumedFromJobId, null);
+});
+
+test("rescue --resume reports a clear error when no resumable session exists", async () => {
+  const binDir = await makeFakeClaudeBin();
+  const workDir = await mkdtemp(path.join(tmpdir(), "claude-rescue-cwd-"));
+  const stateDir = await mkdtemp(path.join(tmpdir(), "claude-rescue-state-"));
+
+  const result = await runCli(
+    [
+      "rescue",
+      "--prompt",
+      "Continue",
+      "--resume",
+      "--cwd",
+      workDir,
+      "--state-dir",
+      stateDir,
+      "--json"
+    ],
+    { binDir }
+  );
+
+  assert.equal(result.exitCode, 1);
+  assert.match(result.stderr, /No resumable Claude rescue session found/);
+});
+
+test("rescue rejects conflicting session options before invoking Claude", async () => {
+  const binDir = await makeFakeClaudeBin();
+  const workDir = await mkdtemp(path.join(tmpdir(), "claude-rescue-cwd-"));
+  const argsFile = path.join(workDir, "args.txt");
+
+  const result = await runCli(
+    [
+      "rescue",
+      "--prompt",
+      "Invalid",
+      "--resume",
+      "--fresh",
+      "--cwd",
+      workDir,
+      "--json"
+    ],
+    {
+      binDir,
+      env: {
+        FAKE_CLAUDE_ARGS_FILE: argsFile
+      }
+    }
+  );
+
+  assert.equal(result.exitCode, 1);
+  assert.match(result.stderr, /cannot use --resume and --fresh together/);
+  await assert.rejects(readFile(argsFile, "utf8"), /ENOENT/);
+});
+
+test("rescue rejects --resume with an explicit session id", async () => {
+  const binDir = await makeFakeClaudeBin();
+
+  const result = await runCli(
+    ["rescue", "--prompt", "Invalid", "--resume", "--session-id", "session-123", "--json"],
+    { binDir }
+  );
+
+  assert.equal(result.exitCode, 1);
+  assert.match(result.stderr, /cannot use --resume with --session-id/);
+});
+
 test("rescue rejects missing prompt before invoking Claude", async () => {
   const binDir = await makeFakeClaudeBin();
 

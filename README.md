@@ -51,6 +51,18 @@ Run a foreground rescue task:
 node scripts/claude-companion.mjs rescue --prompt "Inspect the failing test and suggest a fix"
 ```
 
+Continue the latest resumable rescue session for the current workspace:
+
+```bash
+node scripts/claude-companion.mjs rescue --prompt "Continue from the last rescue context" --resume
+```
+
+Explicitly start a new rescue session:
+
+```bash
+node scripts/claude-companion.mjs rescue --prompt "Start this independently" --fresh
+```
+
 Start a background rescue job:
 
 ```bash
@@ -71,7 +83,7 @@ node scripts/claude-companion.mjs result --job-id <job-id>
 node scripts/claude-companion.mjs cancel --job-id <job-id>
 ```
 
-Rescue defaults to model `sonnet`, standard noninteractive Claude mode, and permission mode `acceptEdits`. For serious rescue or review work, prefer `--model opus`. Use `--plan` for read-only planning, `--model spark` to map to `haiku`, `--permission-mode auto` for Claude's auto permission classifier, and `--danger` only when `bypassPermissions` is explicitly intended. Use `--bare` only when you want strict isolation and have bare-compatible auth such as `claude setup-token`, `ANTHROPIC_API_KEY`, provider credentials, or `apiKeyHelper`. With `--background`, add `--wait` to keep the foreground command open until the job completes, fails, is cancelled, or reaches `--wait-timeout-ms` milliseconds. The default wait timeout is 300000ms.
+Rescue defaults to model `sonnet`, standard noninteractive Claude mode, permission mode `acceptEdits`, and a new Claude session for each invocation. Add `--resume` to continue the latest completed or failed rescue session in the same resolved workspace. Add `--fresh` to make the new-session choice explicit. For serious rescue or review work, prefer `--model opus`. Use `--plan` for read-only planning, `--model spark` to map to `haiku`, `--permission-mode auto` for Claude's auto permission classifier, and `--danger` only when `bypassPermissions` is explicitly intended. Use `--bare` only when you want strict isolation and have bare-compatible auth such as `claude setup-token`, `ANTHROPIC_API_KEY`, provider credentials, or `apiKeyHelper`. With `--background`, add `--wait` to keep the foreground command open until the job completes, fails, is cancelled, or reaches `--wait-timeout-ms` milliseconds. The default wait timeout is 300000ms.
 
 Use `--effort low`, `--effort medium`, `--effort high`, `--effort xhigh`, or `--effort max` to pass Claude Code's effort setting. Use `--effort low` for smoke tests, cheap sanity checks, and explicitly low-effort requests. Claude Code may route short model aliases differently than expected; when cost matters, prefer a full Claude Code model ID and inspect the raw `modelUsage` in `--json` output. After any real Claude call, report the actual model used from `raw.modelUsage` when available.
 
@@ -174,15 +186,14 @@ This plugin mirrors the core shape of [`openai/codex-plugin-cc`](https://github.
 | Adversarial review | `/codex:adversarial-review` | `claude-adversarial-review`, `adversarial-review` | Implemented |
 | Stop review gate | setup-managed Stop hook | optional `claude-stop-review-hook` | Implemented, inert until explicitly enabled |
 | Wait mode | `--wait` | `--background --wait` | Implemented |
-| Resume/fresh rescue | `--resume`, `--fresh` | Not implemented | Remaining parity work |
-| Session handoff | `codex resume <session>` guidance | Claude session id is stored, no handoff UX yet | Remaining parity work |
+| Resume/fresh rescue | `--resume`, `--fresh` | `--resume`, `--fresh` | Implemented |
+| Session handoff | `codex resume <session>` guidance | Claude session id is stored and `--resume` continues the latest workspace rescue session | Partially implemented |
 | Install/update flow | Claude plugin marketplace install | local repo/plugin install notes only | Remaining parity work |
 | Default model policy | Codex config-driven | Claude Code args plus skill guidance | Partially implemented |
 | Permission learning | Deferred | Deferred allowlist idea | Remaining parity work |
 
 Known non-parity gaps to close before release candidate:
 
-- Add `--resume` and `--fresh` rescue ergonomics, including clear behavior for continuing the latest Claude session in a repo.
 - Add install/update and local marketplace guidance for a fresh user.
 - Add troubleshooting notes for Claude auth, hook trust, sandbox/network prompts, and model alias routing.
 - Design the deferred permission-learning flow for recurring Claude permission prompts and `--allowedTools`.
