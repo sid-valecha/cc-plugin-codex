@@ -31,7 +31,11 @@ async function makeFakeClaudeBin() {
       "  exit 17",
       "fi",
       "echo '{\"type\":\"stream_event\",\"stream_event\":{\"delta\":{\"text\":\"Background \"}}}'",
-      "echo '{\"type\":\"result\",\"result\":\"Background done\"}'",
+      "if [ \"$FAKE_CLAUDE_USAGE\" = \"1\" ]; then",
+      "  echo '{\"type\":\"result\",\"result\":\"Background done\",\"modelUsage\":{\"model\":\"claude-test\",\"inputTokens\":12,\"outputTokens\":34}}'",
+      "else",
+      "  echo '{\"type\":\"result\",\"result\":\"Background done\"}'",
+      "fi",
       "exit 0",
       ""
     ].join("\n")
@@ -114,6 +118,85 @@ test("background rescue completes and writes status, result, and logs", async ()
 
   assert.match(await readFile(job.logPath, "utf8"), /Background/);
   assert.equal(await readFile(job.stderrPath, "utf8"), "");
+});
+
+test("status and result render rich completed job metadata and model usage", async () => {
+  const binDir = await makeFakeClaudeBin();
+  const stateDir = await mkdtemp(path.join(tmpdir(), "claude-jobs-state-"));
+
+  const start = await runCli(
+    [
+      "rescue",
+      "--prompt",
+      "Do this in the background",
+      "--background",
+      "--model",
+      "spark",
+      "--effort",
+      "low",
+      "--session-id",
+      "session-rich",
+      "--state-dir",
+      stateDir,
+      "--json"
+    ],
+    {
+      binDir,
+      env: {
+        FAKE_CLAUDE_USAGE: "1"
+      }
+    }
+  );
+  assert.equal(start.exitCode, 0, start.stderr);
+  const jobId = JSON.parse(start.stdout).job.id;
+  await waitForJob(stateDir, jobId, (candidate) => candidate.status === "completed");
+
+  const status = await runCli(["status", "--state-dir", stateDir, "--limit", "1"], { binDir });
+  assert.equal(status.exitCode, 0, status.stderr);
+  assert.match(status.stdout, new RegExp(`\\[completed\\] ${jobId} \\(rescue\\)`));
+  assert.match(status.stdout, /Session: session-rich/);
+  assert.match(
+    status.stdout,
+    /Model: haiku \| Effort: low \| Permission: acceptEdits \| Isolation: standard/
+  );
+  assert.match(status.stdout, /Model usage: inputTokens=12, model=claude-test, outputTokens=34/);
+  assert.match(
+    status.stdout,
+    new RegExp(`Result: node scripts/claude-companion\\.mjs result --job-id ${jobId}`)
+  );
+
+  const result = await runCli(["result", "--job-id", jobId, "--state-dir", stateDir], { binDir });
+  assert.equal(result.exitCode, 0, result.stderr);
+  assert.match(result.stdout, new RegExp(`Job: ${jobId}`));
+  assert.match(result.stdout, /Status: completed/);
+  assert.match(result.stdout, /Session: session-rich/);
+  assert.match(
+    result.stdout,
+    /Model: haiku \| Effort: low \| Permission: acceptEdits \| Isolation: standard/
+  );
+  assert.match(result.stdout, /Exit: 0/);
+  assert.match(result.stdout, /Model usage: inputTokens=12, model=claude-test, outputTokens=34/);
+  assert.match(
+    result.stdout,
+    new RegExp(`Result command: node scripts/claude-companion\\.mjs result --job-id ${jobId}`)
+  );
+  assert.match(result.stdout, /Background done/);
+
+  const jsonResult = await runCli(
+    ["result", "--job-id", jobId, "--state-dir", stateDir, "--json"],
+    { binDir }
+  );
+  assert.equal(jsonResult.exitCode, 0, jsonResult.stderr);
+  const payload = JSON.parse(jsonResult.stdout);
+  assert.deepEqual(payload.job.modelUsage, {
+    model: "claude-test",
+    inputTokens: 12,
+    outputTokens: 34
+  });
+  assert.equal(
+    payload.job.nextCommands.result,
+    `node scripts/claude-companion.mjs result --job-id ${jobId}`
+  );
 });
 
 test("background rescue --wait returns the completed job and result", async () => {
@@ -256,6 +339,50 @@ test("cancel stops a running background rescue job", async () => {
   assert.equal(job.summary, "Cancelled by user");
 });
 
+test("status renders next commands for running jobs", async () => {
+  const binDir = await makeFakeClaudeBin();
+  const stateDir = await mkdtemp(path.join(tmpdir(), "claude-jobs-state-"));
+
+  const start = await runCli(
+    [
+      "rescue",
+      "--prompt",
+      "Keep running",
+      "--background",
+      "--session-id",
+      "session-running",
+      "--state-dir",
+      stateDir,
+      "--json"
+    ],
+    {
+      binDir,
+      env: {
+        FAKE_CLAUDE_STREAM: "slow"
+      }
+    }
+  );
+  assert.equal(start.exitCode, 0, start.stderr);
+  const jobId = JSON.parse(start.stdout).job.id;
+  await waitForJob(stateDir, jobId, (candidate) => Boolean(candidate.childPid));
+
+  const status = await runCli(["status", "--state-dir", stateDir], { binDir });
+  assert.equal(status.exitCode, 0, status.stderr);
+  assert.match(status.stdout, new RegExp(`\\[running\\] ${jobId} \\(rescue\\)`));
+  assert.match(status.stdout, /Session: session-running/);
+  assert.match(
+    status.stdout,
+    new RegExp(`Result: node scripts/claude-companion\\.mjs result --job-id ${jobId}`)
+  );
+  assert.match(
+    status.stdout,
+    new RegExp(`Cancel: node scripts/claude-companion\\.mjs cancel --job-id ${jobId}`)
+  );
+
+  const cancel = await runCli(["cancel", "--job-id", jobId, "--state-dir", stateDir, "--json"]);
+  assert.equal(cancel.exitCode, 0, cancel.stderr);
+});
+
 test("failed background rescue writes an actionable result", async () => {
   const binDir = await makeFakeClaudeBin();
   const stateDir = await mkdtemp(path.join(tmpdir(), "claude-jobs-state-"));
@@ -289,6 +416,14 @@ test("failed background rescue writes an actionable result", async () => {
   assert.match(payload.result, /Claude rescue failed/);
   assert.match(payload.result, /simulated Claude crash/);
   assert.match(payload.result, /Exit code: 17/);
+
+  const humanResult = await runCli(["result", "--job-id", jobId, "--state-dir", stateDir], {
+    binDir
+  });
+  assert.equal(humanResult.exitCode, 0, humanResult.stderr);
+  assert.match(humanResult.stdout, /Status: failed/);
+  assert.match(humanResult.stdout, /Exit: 17/);
+  assert.match(humanResult.stdout, /Claude rescue failed/);
 });
 
 test("status marks stale running jobs as failed", async () => {

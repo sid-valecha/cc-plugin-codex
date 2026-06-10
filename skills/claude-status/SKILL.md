@@ -23,3 +23,5 @@ Useful options:
 
 - `--state-dir <path>` to inspect a non-default plugin data directory.
 - `--limit <n>` to limit the number of jobs shown.
+
+Human output includes each job's status, Claude session id, model, effort, permission mode, isolation, model usage when available, and next `result` or `cancel` commands.

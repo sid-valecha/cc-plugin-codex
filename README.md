@@ -79,6 +79,8 @@ Job state is stored under `PLUGIN_DATA`, `CODEX_PLUGIN_DATA`, `CLAUDE_PLUGIN_DAT
 
 Future worktree workflows are intentionally not implemented yet.
 
+Human `status` and `result` output includes job id, status, Claude session id, model, effort, permission mode, isolation, exit information when relevant, model usage when Claude reports it, and useful follow-up commands. JSON output preserves existing fields and may include `modelUsage` and `nextCommands` on job objects when available.
+
 Run a structured read-only review:
 
 ```bash
@@ -181,7 +183,6 @@ This plugin mirrors the core shape of [`openai/codex-plugin-cc`](https://github.
 Known non-parity gaps to close before release candidate:
 
 - Add `--resume` and `--fresh` rescue ergonomics, including clear behavior for continuing the latest Claude session in a repo.
-- Improve `status` and `result` rendering with Claude session ids, actual model usage when available, and direct next commands.
 - Add install/update and local marketplace guidance for a fresh user.
 - Add troubleshooting notes for Claude auth, hook trust, sandbox/network prompts, and model alias routing.
 - Design the deferred permission-learning flow for recurring Claude permission prompts and `--allowedTools`.
