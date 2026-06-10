@@ -52,6 +52,9 @@ const DEFAULT_STATE_DIR = path.join(homedir(), ".codex", "plugins", "data", "cla
 const JOBS_FILE = "jobs.json";
 const CANCEL_GRACE_MS = 500;
 const STALE_RUNNING_GRACE_MS = 10000;
+const DEFAULT_WAIT_TIMEOUT_MS = 300000;
+const WAIT_POLL_INTERVAL_MS = 100;
+const TERMINAL_JOB_STATUSES = new Set(["completed", "failed", "cancelled"]);
 const STOP_REVIEW_ENABLE_FILE = path.join(".codex", "claude-stop-review.enabled");
 const BLOCKING_SEVERITIES = new Set(["critical", "high"]);
 
@@ -74,6 +77,8 @@ function parseArgs(argv) {
     danger: false,
     plan: false,
     background: false,
+    wait: false,
+    waitTimeoutMs: DEFAULT_WAIT_TIMEOUT_MS,
     bare: false,
     adversarial: false,
     maxDiffBytes: DEFAULT_REVIEW_MAX_DIFF_BYTES
@@ -167,6 +172,15 @@ function parseArgs(argv) {
       options.background = true;
       continue;
     }
+    if (arg === "--wait") {
+      options.wait = true;
+      continue;
+    }
+    if (arg === "--wait-timeout-ms") {
+      options.waitTimeoutMs = Number.parseInt(readOptionValue(argv, index, arg), 10);
+      index += 1;
+      continue;
+    }
     if (arg === "--bare") {
       options.bare = true;
       continue;
@@ -223,6 +237,9 @@ function usage() {
     "  --danger                Use bypassPermissions permission mode.",
     "  --permission-mode <m>   Explicit Claude permission mode.",
     "  --session-id <uuid>     Explicit Claude session id for continuity.",
+    "  --background            Start a managed background job.",
+    "  --wait                  With --background, wait for the job to finish.",
+    "  --wait-timeout-ms <n>   Maximum --wait duration. Defaults to 300000.",
     "  --bare                  Use Claude bare mode for API-key/helper/provider auth.",
     "",
     "Job options:",
@@ -634,6 +651,10 @@ async function runRescue(options) {
   if (!options.prompt || !options.prompt.trim()) {
     throw new Error("rescue requires --prompt <text>");
   }
+  if (options.wait && !options.background) {
+    throw new Error("rescue --wait requires --background");
+  }
+  const waitTimeoutMs = normalizeWaitTimeoutMs(options.waitTimeoutMs);
 
   const model = normalizeModel(options.model);
   const effort = normalizeEffort(options.effort);
@@ -642,13 +663,21 @@ async function runRescue(options) {
   const cwd = await resolveCwd(options.cwd);
 
   if (options.background) {
-    return startBackgroundRescue({
+    const started = await startBackgroundRescue({
       options,
       cwd,
       model,
       effort,
       permissionMode,
       sessionId
+    });
+    if (!options.wait) {
+      return started;
+    }
+    return waitForBackgroundJob({
+      stateDir: resolveStateDir(options.stateDir),
+      jobId: started.job.id,
+      timeoutMs: waitTimeoutMs
     });
   }
 
@@ -681,6 +710,13 @@ async function runRescue(options) {
     stderr: invocation.stderr,
     stream
   };
+}
+
+function normalizeWaitTimeoutMs(timeoutMs) {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    throw new Error("--wait-timeout-ms must be a positive integer");
+  }
+  return timeoutMs;
 }
 
 function parseClaudeStream(stdout) {
@@ -791,6 +827,21 @@ function normalizeContent(content) {
 
 function renderHumanRescue(result) {
   const lines = [];
+  if (result.wait) {
+    lines.push(`Claude ${result.job.kind} job ${result.job.id}: ${result.status}`);
+    if (result.status === "timed_out") {
+      lines.push(`Wait timed out after ${result.wait.timeoutMs}ms.`);
+      lines.push(`Result: ${result.job.resultPath}`);
+      lines.push(`Next: node scripts/claude-companion.mjs result --job-id ${result.job.id}`);
+      return lines.join("\n");
+    }
+    if (result.result) {
+      lines.push("", result.result.trimEnd());
+    } else {
+      lines.push("", result.job.summary || "No result is available.");
+    }
+    return lines.join("\n");
+  }
   if (result.job && result.status === "running") {
     lines.push(`Started Claude ${result.job.kind} job ${result.job.id}`);
     lines.push(`Status: ${result.job.status}`);
@@ -969,6 +1020,48 @@ async function startBackgroundRescue({ options, cwd, model, effort, permissionMo
   };
 }
 
+async function waitForBackgroundJob({ stateDir, jobId, timeoutMs }) {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() <= deadline) {
+    const jobs = await refreshStaleJobs(stateDir, await readJobs(stateDir));
+    const job = jobs.find((candidate) => candidate.id === jobId);
+    if (!job) {
+      throw new Error(`Job not found while waiting: ${jobId}`);
+    }
+    if (TERMINAL_JOB_STATUSES.has(job.status)) {
+      const result = await readJobResult(job);
+      return {
+        ok: job.status === "completed",
+        status: job.status,
+        job: sanitizeJob(job),
+        result,
+        wait: {
+          timedOut: false,
+          timeoutMs
+        }
+      };
+    }
+    await delay(WAIT_POLL_INTERVAL_MS);
+  }
+
+  const jobs = await refreshStaleJobs(stateDir, await readJobs(stateDir));
+  const job = jobs.find((candidate) => candidate.id === jobId);
+  if (!job) {
+    throw new Error(`Job not found while waiting: ${jobId}`);
+  }
+  return {
+    ok: false,
+    status: "timed_out",
+    job: sanitizeJob(job),
+    result: await readJobResult(job),
+    wait: {
+      timedOut: true,
+      timeoutMs
+    }
+  };
+}
+
 async function runRescueJob(options) {
   if (!options.jobId) {
     throw new Error("__run-rescue-job requires --job-id");
@@ -1076,6 +1169,15 @@ async function runResult(options) {
   if (!job) {
     throw new Error("No Claude jobs found");
   }
+  const result = await readJobResult(job);
+  return {
+    ok: job.status === "completed" || result.length > 0,
+    job: sanitizeJob(job),
+    result
+  };
+}
+
+async function readJobResult(job) {
   let result = "";
   try {
     result = await readFile(job.resultPath, "utf8");
@@ -1084,11 +1186,7 @@ async function runResult(options) {
       throw error;
     }
   }
-  return {
-    ok: job.status === "completed" || result.length > 0,
-    job: sanitizeJob(job),
-    result
-  };
+  return result;
 }
 
 async function runCancel(options) {

@@ -116,6 +116,112 @@ test("background rescue completes and writes status, result, and logs", async ()
   assert.equal(await readFile(job.stderrPath, "utf8"), "");
 });
 
+test("background rescue --wait returns the completed job and result", async () => {
+  const binDir = await makeFakeClaudeBin();
+  const stateDir = await mkdtemp(path.join(tmpdir(), "claude-jobs-state-"));
+
+  const result = await runCli(
+    [
+      "rescue",
+      "--prompt",
+      "Do this in the background",
+      "--background",
+      "--wait",
+      "--state-dir",
+      stateDir,
+      "--json"
+    ],
+    { binDir }
+  );
+
+  assert.equal(result.exitCode, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.ok, true);
+  assert.equal(payload.status, "completed");
+  assert.equal(payload.job.status, "completed");
+  assert.equal(payload.result, "Background done");
+  assert.equal(payload.wait.timedOut, false);
+});
+
+test("background rescue --wait reports timeout without discarding the running job", async () => {
+  const binDir = await makeFakeClaudeBin();
+  const stateDir = await mkdtemp(path.join(tmpdir(), "claude-jobs-state-"));
+
+  const result = await runCli(
+    [
+      "rescue",
+      "--prompt",
+      "Keep running",
+      "--background",
+      "--wait",
+      "--wait-timeout-ms",
+      "100",
+      "--state-dir",
+      stateDir,
+      "--json"
+    ],
+    {
+      binDir,
+      env: {
+        FAKE_CLAUDE_STREAM: "slow"
+      }
+    }
+  );
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.stderr, "");
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.ok, false);
+  assert.equal(payload.status, "timed_out");
+  assert.equal(payload.job.status, "running");
+  assert.equal(payload.wait.timedOut, true);
+
+  const cancel = await runCli([
+    "cancel",
+    "--job-id",
+    payload.job.id,
+    "--state-dir",
+    stateDir,
+    "--json"
+  ]);
+  assert.equal(cancel.exitCode, 0, cancel.stderr);
+});
+
+test("background rescue --wait returns failed job details", async () => {
+  const binDir = await makeFakeClaudeBin();
+  const stateDir = await mkdtemp(path.join(tmpdir(), "claude-jobs-state-"));
+
+  const result = await runCli(
+    [
+      "rescue",
+      "--prompt",
+      "Crash in the background",
+      "--background",
+      "--wait",
+      "--state-dir",
+      stateDir,
+      "--json"
+    ],
+    {
+      binDir,
+      env: {
+        FAKE_CLAUDE_STREAM: "crash"
+      }
+    }
+  );
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.stderr, "");
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.ok, false);
+  assert.equal(payload.status, "failed");
+  assert.equal(payload.job.status, "failed");
+  assert.match(payload.job.summary, /simulated Claude crash/);
+  assert.match(payload.result, /Claude rescue failed/);
+  assert.match(payload.result, /Exit code: 17/);
+  assert.equal(payload.wait.timedOut, false);
+});
+
 test("cancel stops a running background rescue job", async () => {
   const binDir = await makeFakeClaudeBin();
   const stateDir = await mkdtemp(path.join(tmpdir(), "claude-jobs-state-"));

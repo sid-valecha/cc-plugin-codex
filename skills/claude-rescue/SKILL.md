@@ -25,6 +25,12 @@ Run a background rescue task:
 node scripts/claude-companion.mjs rescue --prompt "<task>" --background
 ```
 
+Start a background rescue task and wait for completion:
+
+```bash
+node scripts/claude-companion.mjs rescue --prompt "<task>" --background --wait
+```
+
 For machine-readable output:
 
 ```bash
@@ -42,6 +48,8 @@ Useful options:
 - `--danger` to use `bypassPermissions` only when the user explicitly accepts that risk.
 - `--permission-mode <mode>` for an explicit Claude Code permission mode.
 - `--session-id <uuid>` when continuing a known Claude session.
+- `--wait` with `--background` to wait until the job completes, fails, is cancelled, or times out.
+- `--wait-timeout-ms <n>` to choose the wait timeout. The default is 300000.
 - `--bare` for strict isolation when using `claude setup-token`, `ANTHROPIC_API_KEY`, Bedrock, Vertex, or `apiKeyHelper`.
 - `--state-dir <path>` for tests or custom plugin data locations.
 
