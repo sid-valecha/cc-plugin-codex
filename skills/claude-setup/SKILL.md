@@ -44,4 +44,21 @@ If Claude Code is unauthenticated, guide the user to use one of:
 
 If `claude auth status --text` succeeds in the user's normal terminal but the plugin setup check reports unauthenticated, treat it as a sandbox/keychain visibility problem instead of a missing login. Ask the user to approve the Claude-invoking command outside the sandbox, or guide them to bare-compatible auth such as `claude setup-token`, `ANTHROPIC_API_KEY`, provider credentials, or `apiKeyHelper`.
 
+For a smoother unmanaged local Codex setup, recommend a one-time profile that
+routes approvals to the user:
+
+```bash
+cat > ~/.codex/claude-companion.config.toml <<'EOF'
+approval_policy = "on-request"
+approvals_reviewer = "user"
+sandbox_mode = "workspace-write"
+EOF
+codex --profile claude-companion
+```
+
+If organization policy forces automatic approval review and denies external
+Claude disclosure, the plugin cannot bypass that policy. Tell the user that an
+admin or workspace policy must allow the narrow Claude delegation command
+prefixes before live Claude calls can run.
+
 Do not run a prompt through Claude as part of setup.

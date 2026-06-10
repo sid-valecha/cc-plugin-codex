@@ -17,6 +17,18 @@ If setup reports unauthenticated even though `claude auth status --text` works i
 
 Real rescue calls can send prompts and workspace context to Claude Code and may spend quota. If the Codex host offers persistent approvals, ask the user to approve the narrow prefix `node scripts/claude-companion.mjs rescue` instead of broad commands like `node`. If host policy blocks external disclosure, do not bypass it.
 
+For unmanaged local Codex installs, the smooth first-run path is a one-time
+Codex profile:
+
+```bash
+cat > ~/.codex/claude-companion.config.toml <<'EOF'
+approval_policy = "on-request"
+approvals_reviewer = "user"
+sandbox_mode = "workspace-write"
+EOF
+codex --profile claude-companion
+```
+
 If the host approval system denies the rescue command because it would disclose
 workspace context to Claude, stop and report that `claude-rescue` was blocked.
 Do not silently complete the task locally with Codex, because that makes a
