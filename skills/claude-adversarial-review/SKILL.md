@@ -1,13 +1,13 @@
 ---
 name: claude-adversarial-review
-description: Run a stricter structured read-only Claude Code review that searches for subtle defects and weak assumptions.
+description: Compatibility alias for stricter Claude review; prefer claude-review with --adversarial for new use.
 ---
 
 # Claude Adversarial Review
 
-Use this skill when the user wants a stricter read-only review of code changes.
+Use `claude-review` with `--adversarial` for new stricter reviews. This compatibility skill remains available for parity with earlier plugin versions.
 
-Real adversarial review calls send diffs and review prompts to Claude Code and may spend quota. If the Codex host offers persistent approvals, ask the user to approve the narrow prefix `node scripts/claude-companion.mjs adversarial-review` instead of broad commands like `node`. If host policy blocks external disclosure, do not bypass it.
+Real adversarial review calls send diffs and review prompts to Claude Code and may spend quota. If the Codex host offers persistent approvals, prefer approving the narrow prefix `node scripts/claude-companion.mjs review` and running `review --adversarial` instead of approving a separate adversarial command. If host policy blocks external disclosure, do not bypass it.
 
 Review uncommitted changes:
 

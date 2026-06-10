@@ -23,7 +23,6 @@ Recommended prefixes:
 - `node scripts/claude-companion.mjs ui`
 - `node scripts/claude-companion.mjs design`
 - `node scripts/claude-companion.mjs review`
-- `node scripts/claude-companion.mjs adversarial-review`
 
 Optional, only when the Stop hook is intentionally enabled:
 
@@ -31,7 +30,8 @@ Optional, only when the Stop hook is intentionally enabled:
 
 Approve only the modes that should be available in the environment. For
 example, a read-only environment may approve `plan` and `review` but not
-write-capable `rescue` or `ui`.
+write-capable `rescue` or `ui`. Stricter adversarial review should usually use
+`review --adversarial`, so it does not need a separate first-run approval.
 
 ## Policy Blocks
 
