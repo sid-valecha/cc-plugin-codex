@@ -19,6 +19,18 @@ Run a foreground rescue task:
 node scripts/claude-companion.mjs rescue --prompt "<task>"
 ```
 
+Continue the latest resumable rescue session for the current workspace:
+
+```bash
+node scripts/claude-companion.mjs rescue --prompt "<task>" --resume
+```
+
+Explicitly start a new rescue session:
+
+```bash
+node scripts/claude-companion.mjs rescue --prompt "<task>" --fresh
+```
+
 Run a background rescue task:
 
 ```bash
@@ -48,6 +60,8 @@ Useful options:
 - `--danger` to use `bypassPermissions` only when the user explicitly accepts that risk.
 - `--permission-mode <mode>` for an explicit Claude Code permission mode.
 - `--session-id <uuid>` when continuing a known Claude session.
+- `--resume` to continue the latest completed or failed rescue session for the same resolved workspace.
+- `--fresh` to explicitly force a new Claude session, which is also the default behavior.
 - `--wait` with `--background` to wait until the job completes, fails, is cancelled, or times out.
 - `--wait-timeout-ms <n>` to choose the wait timeout. The default is 300000.
 - `--bare` for strict isolation when using `claude setup-token`, `ANTHROPIC_API_KEY`, Bedrock, Vertex, or `apiKeyHelper`.
