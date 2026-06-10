@@ -38,6 +38,8 @@ The initial user-facing skill is:
 
 - `claude-setup`: diagnose local Claude Code installation and auth without sending a prompt to Claude.
 - `claude-rescue`: delegate a foreground task to Claude Code through headless stream-json mode.
+- `claude-plan`: ask Claude for read-only planning, architecture, migration, or debugging strategy help.
+- `claude-ui`: ask Claude for frontend UI/design implementation, critique, or polish.
 - `claude-status`: list active and recent background Claude jobs.
 - `claude-result`: read the latest or selected Claude job result.
 - `claude-cancel`: cancel a running Claude job.
@@ -51,6 +53,20 @@ Run a foreground rescue task:
 ```bash
 node scripts/claude-companion.mjs rescue --prompt "Inspect the failing test and suggest a fix"
 ```
+
+Ask Claude for read-only planning:
+
+```bash
+node scripts/claude-companion.mjs plan --prompt "Design the migration plan for this module"
+```
+
+Ask Claude for UI/design implementation or polish:
+
+```bash
+node scripts/claude-companion.mjs ui --prompt "Polish the dashboard layout and responsive behavior"
+```
+
+Use `node scripts/claude-companion.mjs ui --prompt "<request>" --plan` for read-only UI critique.
 
 Continue the latest resumable rescue session for the current workspace:
 
@@ -94,7 +110,7 @@ node scripts/claude-companion.mjs permissions export --proposal-id <proposal-id>
 
 Permission proposals are written under plugin state and must be reviewed before export. The export command refuses proposals unless the proposal file has been explicitly edited to set `"approved": true`. Export prints `--allowedTools` arguments only; rescue does not consume proposals automatically.
 
-Rescue defaults to model `sonnet`, standard noninteractive Claude mode, permission mode `acceptEdits`, and a new Claude session for each invocation. Add `--resume` to continue the latest completed or failed rescue session in the same resolved workspace. Add `--fresh` to make the new-session choice explicit. For serious rescue or review work, prefer `--model opus`. Use `--plan` for read-only planning, `--model spark` to map to `haiku`, `--permission-mode auto` for Claude's auto permission classifier, and `--danger` only when `bypassPermissions` is explicitly intended. Use `--bare` only when you want strict isolation and have bare-compatible auth such as `claude setup-token`, `ANTHROPIC_API_KEY`, provider credentials, or `apiKeyHelper`. With `--background`, add `--wait` to keep the foreground command open until the job completes, fails, is cancelled, or reaches `--wait-timeout-ms` milliseconds. The default wait timeout is 300000ms.
+Rescue defaults to model `sonnet`, standard noninteractive Claude mode, permission mode `acceptEdits`, and a new Claude session for each invocation. `plan` always uses read-only `plan` permission mode. `ui`/`design` use `acceptEdits` by default and switch to read-only critique with `--plan`. Add `--resume` to continue the latest completed or failed rescue session in the same resolved workspace. Add `--fresh` to make the new-session choice explicit. For serious rescue, planning, UI/design, or review work, prefer `--model opus`. Use `--plan` for read-only planning, `--model spark` to map to `haiku`, `--permission-mode auto` for Claude's auto permission classifier, and `--danger` only when `bypassPermissions` is explicitly intended. Use `--bare` only when you want strict isolation and have bare-compatible auth such as `claude setup-token`, `ANTHROPIC_API_KEY`, provider credentials, or `apiKeyHelper`. With `--background`, add `--wait` to keep the foreground command open until the job completes, fails, is cancelled, or reaches `--wait-timeout-ms` milliseconds. The default wait timeout is 300000ms.
 
 Use `--effort low`, `--effort medium`, `--effort high`, `--effort xhigh`, or `--effort max` to pass Claude Code's effort setting. Use `--effort low` for smoke tests, cheap sanity checks, and explicitly low-effort requests. Claude Code may route short model aliases differently than expected; when cost matters, prefer a full Claude Code model ID and inspect the raw `modelUsage` in `--json` output. After any real Claude call, report the actual model used from `raw.modelUsage` when available.
 
