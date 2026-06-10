@@ -365,7 +365,7 @@ This plugin mirrors the core shape of [`openai/codex-plugin-cc`](https://github.
 | Result | `/codex:result` | `claude-result`, `result` | Implemented |
 | Cancel | `/codex:cancel` | `claude-cancel`, `cancel` | Implemented |
 | Structured review | `/codex:review` | `claude-review`, `review` | Implemented |
-| Adversarial review | `/codex:adversarial-review` | `claude-adversarial-review`, `adversarial-review` | Implemented |
+| Adversarial review | `/codex:adversarial-review` | `review --adversarial`; compatibility alias `adversarial-review` | Implemented, de-emphasized |
 | Stop review gate | setup-managed Stop hook | optional `claude-stop-review-hook` | Implemented, inert until explicitly enabled |
 | Wait mode | `--wait` | `--background --wait` | Implemented |
 | Resume/fresh rescue | `--resume`, `--fresh` | `--resume`, `--fresh` | Implemented |
