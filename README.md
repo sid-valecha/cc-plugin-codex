@@ -44,6 +44,7 @@ The initial user-facing skill is:
 - `claude-review`: run a structured, read-only Claude Code review.
 - `claude-adversarial-review`: run a stricter read-only review over the same schema.
 - `claude-stop-review-hook`: configure the optional Codex Stop hook review flow.
+- `claude-permissions`: analyze plugin-owned Claude logs for permission prompts and export reviewed `--allowedTools` arguments.
 
 Run a foreground rescue task:
 
@@ -82,6 +83,16 @@ node scripts/claude-companion.mjs status
 node scripts/claude-companion.mjs result --job-id <job-id>
 node scripts/claude-companion.mjs cancel --job-id <job-id>
 ```
+
+Analyze permission prompts from plugin-owned job logs:
+
+```bash
+node scripts/claude-companion.mjs permissions analyze --job-id <job-id>
+node scripts/claude-companion.mjs permissions show --proposal-id <proposal-id>
+node scripts/claude-companion.mjs permissions export --proposal-id <proposal-id> --format allowed-tools
+```
+
+Permission proposals are written under plugin state and must be reviewed before export. The export command refuses proposals unless the proposal file has been explicitly edited to set `"approved": true`. Export prints `--allowedTools` arguments only; rescue does not consume proposals automatically.
 
 Rescue defaults to model `sonnet`, standard noninteractive Claude mode, permission mode `acceptEdits`, and a new Claude session for each invocation. Add `--resume` to continue the latest completed or failed rescue session in the same resolved workspace. Add `--fresh` to make the new-session choice explicit. For serious rescue or review work, prefer `--model opus`. Use `--plan` for read-only planning, `--model spark` to map to `haiku`, `--permission-mode auto` for Claude's auto permission classifier, and `--danger` only when `bypassPermissions` is explicitly intended. Use `--bare` only when you want strict isolation and have bare-compatible auth such as `claude setup-token`, `ANTHROPIC_API_KEY`, provider credentials, or `apiKeyHelper`. With `--background`, add `--wait` to keep the foreground command open until the job completes, fails, is cancelled, or reaches `--wait-timeout-ms` milliseconds. The default wait timeout is 300000ms.
 
@@ -321,11 +332,11 @@ This plugin mirrors the core shape of [`openai/codex-plugin-cc`](https://github.
 | Session handoff | `codex resume <session>` guidance | Claude session id is stored and `--resume` continues the latest workspace rescue session | Partially implemented |
 | Install/update flow | Claude plugin marketplace install | local marketplace and cachebuster reinstall guidance | Documented |
 | Default model policy | Codex config-driven | Claude Code args plus skill guidance | Partially implemented |
-| Permission learning | Deferred | deferred `--allowedTools` proposal design in `context/permission-learning-design.md` | Designed, not implemented |
+| Permission learning | Deferred | plugin-owned log analyzer with reviewed `--allowedTools` export | Implemented |
 
 Known non-parity gaps to close before release candidate:
 
-- Implement permission-learning analysis/export later if the deferred design is accepted.
+- None currently known.
 
 Deferred setup UX polish:
 

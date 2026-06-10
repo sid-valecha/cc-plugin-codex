@@ -51,6 +51,7 @@ const VALID_PERMISSION_MODES = new Set([
 ]);
 const DEFAULT_STATE_DIR = path.join(homedir(), ".codex", "plugins", "data", "claude-code");
 const JOBS_FILE = "jobs.json";
+const PERMISSIONS_DIR = "permissions";
 const CANCEL_GRACE_MS = 500;
 const STALE_RUNNING_GRACE_MS = 10000;
 const DEFAULT_WAIT_TIMEOUT_MS = 300000;
@@ -59,6 +60,12 @@ const TERMINAL_JOB_STATUSES = new Set(["completed", "failed", "cancelled"]);
 const RESUMABLE_JOB_STATUSES = new Set(["completed", "failed"]);
 const STOP_REVIEW_ENABLE_FILE = path.join(".codex", "claude-stop-review.enabled");
 const BLOCKING_SEVERITIES = new Set(["critical", "high"]);
+const PERMISSION_TEXT_PATTERN = /\b(permission|approval|approve|allow|allowed|denied|deny|requires permission|needs permission)\b/i;
+const TOOL_PATTERN = /\b(?:Bash|Read|Edit|Write|Glob|Grep|LS|WebFetch|WebSearch|Task|TodoWrite|NotebookRead|NotebookEdit)\([^)\r\n]+\)/g;
+const DESTRUCTIVE_COMMAND_PATTERN =
+  /\b(rm\s+-|git\s+clean\b|git\s+reset\s+--hard\b|npm\s+publish\b|pnpm\s+publish\b|yarn\s+npm\s+publish\b|deploy\b|kubectl\b|docker\s+push\b|aws\b|gcloud\b|scp\b|ssh\b|curl\b|wget\b)\b/i;
+const READ_ONLY_COMMAND_PATTERN =
+  /^(npm|pnpm|yarn|bun)\s+(run\s+)?(test|lint|typecheck|check|format)(\b|:)|^(git\s+(status|diff|log|show)|ls\b|pwd\b|cat\b|sed\b|rg\b|grep\b|find\b)/i;
 
 function parseArgs(argv) {
   const options = {
@@ -73,6 +80,8 @@ function parseArgs(argv) {
     permissionMode: null,
     stateDir: null,
     jobId: null,
+    proposalId: null,
+    format: "allowed-tools",
     limit: 20,
     sessionId: null,
     write: false,
@@ -142,6 +151,16 @@ function parseArgs(argv) {
     }
     if (arg === "--job-id") {
       options.jobId = readOptionValue(argv, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === "--proposal-id") {
+      options.proposalId = readOptionValue(argv, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === "--format") {
+      options.format = readOptionValue(argv, index, arg);
       index += 1;
       continue;
     }
@@ -232,6 +251,8 @@ function usage() {
     "  review    Run a structured read-only Claude review.",
     "  adversarial-review",
     "           Run a stricter structured read-only Claude review.",
+    "  permissions analyze|show|export",
+    "           Analyze plugin-owned Claude logs and export reviewed permission proposals.",
     "  hook-stop-review",
     "           Optional Stop hook helper for read-only Claude review.",
     "",
@@ -259,6 +280,10 @@ function usage() {
     "Job options:",
     "  --job-id <id>           Select a specific job for result or cancel.",
     "  --limit <n>             Limit status output. Defaults to 20.",
+    "",
+    "Permission proposal options:",
+    "  --proposal-id <id>      Select a permission proposal for show or export.",
+    "  --format <format>       Export format. Currently only allowed-tools.",
     "",
     "Review options:",
     "  --base <ref>            Review git diff from <ref>...HEAD.",
@@ -1100,10 +1125,19 @@ async function ensureStateDir(stateDir) {
   await mkdir(path.join(stateDir, "logs"), { recursive: true });
   await mkdir(path.join(stateDir, "results"), { recursive: true });
   await mkdir(path.join(stateDir, "sessions"), { recursive: true });
+  await mkdir(path.join(stateDir, PERMISSIONS_DIR), { recursive: true });
 }
 
 function jobsPath(stateDir) {
   return path.join(stateDir, JOBS_FILE);
+}
+
+function permissionsDir(stateDir) {
+  return path.join(stateDir, PERMISSIONS_DIR);
+}
+
+function permissionProposalPath(stateDir, proposalId) {
+  return path.join(permissionsDir(stateDir), `${proposalId}.json`);
 }
 
 async function readJobs(stateDir) {
@@ -1571,6 +1605,417 @@ function buildNextCommands(job) {
   return commands;
 }
 
+async function runPermissions(options, rest) {
+  const action = rest[0];
+  if (action === "analyze") {
+    return runPermissionsAnalyze(options);
+  }
+  if (action === "show") {
+    return runPermissionsShow(options);
+  }
+  if (action === "export") {
+    return runPermissionsExport(options);
+  }
+  throw new Error("permissions requires one of: analyze, show, export");
+}
+
+async function runPermissionsAnalyze(options) {
+  const stateDir = resolveStateDir(options.stateDir);
+  const jobs = await refreshStaleJobs(stateDir, await readJobs(stateDir));
+  const selectedJobs = await selectPermissionJobs(jobs, options);
+  if (selectedJobs.length === 0) {
+    throw new Error(options.jobId ? `Job not found: ${options.jobId}` : "No Claude jobs found");
+  }
+
+  const extracted = [];
+  for (const job of selectedJobs) {
+    extracted.push(...(await extractPermissionCandidatesFromJob(job)));
+  }
+  const candidates = mergePermissionCandidates(extracted);
+  const workspaceRoot =
+    selectedJobs[0]?.workspaceRoot || selectedJobs[0]?.cwd || (await resolveCwd(options.cwd));
+  const proposalId = `perm-${Date.now()}-${randomUUID().slice(0, 8)}`;
+  const proposal = {
+    version: 1,
+    id: proposalId,
+    workspaceRoot,
+    generatedAt: new Date().toISOString(),
+    sourceJobs: selectedJobs.map((job) => job.id),
+    approved: false,
+    approvalRequired: true,
+    candidates,
+    candidateCount: candidates.length
+  };
+
+  await writePermissionProposal(stateDir, proposal);
+  return {
+    ok: true,
+    status: "completed",
+    stateDir,
+    proposalPath: permissionProposalPath(stateDir, proposalId),
+    proposal,
+    nextCommands: buildPermissionNextCommands(proposalId)
+  };
+}
+
+async function selectPermissionJobs(jobs, options) {
+  if (options.jobId) {
+    const job = jobs.find((candidate) => candidate.id === options.jobId);
+    return job ? [job] : [];
+  }
+  const cwd = await resolveCwd(options.cwd);
+  return jobs.filter((job) => normalizeJobWorkspace(job) === cwd);
+}
+
+async function extractPermissionCandidatesFromJob(job) {
+  if (!job.logPath) {
+    return [];
+  }
+  let logText;
+  try {
+    logText = await readFile(job.logPath, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  }
+
+  const candidates = [];
+  const lines = logText.split(/\r?\n/);
+  for (const [index, rawLine] of lines.entries()) {
+    const line = rawLine.trim();
+    if (!line) {
+      continue;
+    }
+    let event = null;
+    try {
+      event = JSON.parse(line);
+    } catch {
+      event = null;
+    }
+    if (event) {
+      candidates.push(...extractPermissionCandidatesFromEvent(event, job, index + 1));
+      continue;
+    }
+    candidates.push(...extractPermissionCandidatesFromText(line, job, index + 1, "log_text"));
+  }
+  return candidates;
+}
+
+function extractPermissionCandidatesFromEvent(event, job, lineNumber) {
+  const eventText = JSON.stringify(event);
+  if (!PERMISSION_TEXT_PATTERN.test(eventText)) {
+    return [];
+  }
+
+  const candidates = [];
+  const explicitPatterns = extractToolPatterns(eventText);
+  for (const pattern of explicitPatterns) {
+    candidates.push(buildPermissionCandidate({ pattern, job, lineNumber, sourceType: event.type || "event" }));
+  }
+
+  for (const pattern of extractStructuredToolPatterns(event)) {
+    candidates.push(buildPermissionCandidate({ pattern, job, lineNumber, sourceType: event.type || "event" }));
+  }
+
+  if (candidates.length > 0) {
+    return candidates;
+  }
+  return extractPermissionCandidatesFromText(eventText, job, lineNumber, event.type || "event");
+}
+
+function extractPermissionCandidatesFromText(text, job, lineNumber, sourceType) {
+  if (!PERMISSION_TEXT_PATTERN.test(text)) {
+    return [];
+  }
+  return extractToolPatterns(text).map((pattern) =>
+    buildPermissionCandidate({ pattern, job, lineNumber, sourceType })
+  );
+}
+
+function extractToolPatterns(text) {
+  return [...new Set(text.match(TOOL_PATTERN) ?? [])];
+}
+
+function extractStructuredToolPatterns(value) {
+  const patterns = new Set();
+  walkPlainObject(value, (node) => {
+    const toolName = firstStringField(node, ["toolName", "tool_name", "tool", "name"]);
+    const command = firstStringField(node, ["command", "cmd"]);
+    if (toolName && command && /^bash$/i.test(toolName)) {
+      patterns.add(`Bash(${command})`);
+    } else if (toolName && isKnownToolName(toolName)) {
+      patterns.add(toolName);
+    }
+    for (const key of ["pattern", "allowedTool", "allowed_tool", "permission"]) {
+      const value = node[key];
+      if (typeof value === "string") {
+        for (const pattern of extractToolPatterns(value)) {
+          patterns.add(pattern);
+        }
+      }
+    }
+  });
+  return [...patterns];
+}
+
+function walkPlainObject(value, visit) {
+  if (!isPlainObject(value)) {
+    return;
+  }
+  visit(value);
+  for (const child of Object.values(value)) {
+    if (isPlainObject(child)) {
+      walkPlainObject(child, visit);
+    } else if (Array.isArray(child)) {
+      for (const item of child) {
+        walkPlainObject(item, visit);
+      }
+    }
+  }
+}
+
+function firstStringField(object, keys) {
+  for (const key of keys) {
+    if (typeof object[key] === "string" && object[key].trim()) {
+      return object[key].trim();
+    }
+  }
+  return "";
+}
+
+function isKnownToolName(value) {
+  return /^(Bash|Read|Edit|Write|Glob|Grep|LS|WebFetch|WebSearch|Task|TodoWrite|NotebookRead|NotebookEdit)$/i.test(
+    value
+  );
+}
+
+function buildPermissionCandidate({ pattern, job, lineNumber, sourceType }) {
+  const normalizedPattern = normalizePermissionPattern(pattern);
+  const risk = classifyPermissionRisk(normalizedPattern);
+  return {
+    kind: "tool",
+    pattern: normalizedPattern,
+    risk,
+    rationale: permissionRationale(normalizedPattern, risk),
+    confidence: normalizedPattern === pattern ? "high" : "medium",
+    sourceJobIds: [job.id],
+    sourceSessions: job.claudeSessionId ? [job.claudeSessionId] : [],
+    sources: [
+      {
+        jobId: job.id,
+        logPath: job.logPath,
+        type: sourceType,
+        line: lineNumber
+      }
+    ]
+  };
+}
+
+function normalizePermissionPattern(pattern) {
+  const trimmed = pattern.trim().replace(/\s+/g, " ");
+  const bashMatch = trimmed.match(/^Bash\((.*)\)$/);
+  if (!bashMatch) {
+    return trimmed;
+  }
+  return `Bash(${bashMatch[1].trim()})`;
+}
+
+function classifyPermissionRisk(pattern) {
+  const bashCommand = extractBashCommand(pattern);
+  if (bashCommand && DESTRUCTIVE_COMMAND_PATTERN.test(bashCommand)) {
+    return "high";
+  }
+  if (/\b(secret|token|credential|keychain|\.env)\b/i.test(pattern)) {
+    return "high";
+  }
+  if (/^(Read|Glob|Grep|LS)\b/.test(pattern)) {
+    return "low";
+  }
+  if (bashCommand && READ_ONLY_COMMAND_PATTERN.test(bashCommand)) {
+    return "low";
+  }
+  if (bashCommand) {
+    return "medium";
+  }
+  return "medium";
+}
+
+function extractBashCommand(pattern) {
+  const match = pattern.match(/^Bash\((.*)\)$/);
+  return match ? match[1].trim() : "";
+}
+
+function permissionRationale(pattern, risk) {
+  if (risk === "high") {
+    return `Potentially sensitive or destructive permission pattern observed: ${pattern}`;
+  }
+  if (risk === "low") {
+    return `Narrow read-only or project-check permission pattern observed: ${pattern}`;
+  }
+  return `Narrow permission pattern observed: ${pattern}`;
+}
+
+function mergePermissionCandidates(candidates) {
+  const byPattern = new Map();
+  for (const candidate of candidates) {
+    const existing = byPattern.get(candidate.pattern);
+    if (!existing) {
+      byPattern.set(candidate.pattern, candidate);
+      continue;
+    }
+    existing.sourceJobIds = mergeSorted(existing.sourceJobIds, candidate.sourceJobIds);
+    existing.sourceSessions = mergeSorted(existing.sourceSessions, candidate.sourceSessions);
+    existing.sources = [...existing.sources, ...candidate.sources].sort(comparePermissionSources);
+    existing.confidence = mergeConfidence(existing.confidence, candidate.confidence);
+    existing.risk = mergeRisk(existing.risk, candidate.risk);
+    existing.rationale = permissionRationale(existing.pattern, existing.risk);
+  }
+  return [...byPattern.values()].sort((left, right) => left.pattern.localeCompare(right.pattern));
+}
+
+function mergeSorted(left, right) {
+  return [...new Set([...left, ...right])].sort();
+}
+
+function comparePermissionSources(left, right) {
+  return (
+    left.jobId.localeCompare(right.jobId) ||
+    String(left.logPath).localeCompare(String(right.logPath)) ||
+    left.line - right.line
+  );
+}
+
+function mergeConfidence(left, right) {
+  if (left === "high" || right === "high") {
+    return "high";
+  }
+  return left || right || "medium";
+}
+
+function mergeRisk(left, right) {
+  const order = ["low", "medium", "high"];
+  return order[Math.max(order.indexOf(left), order.indexOf(right))] ?? "medium";
+}
+
+async function writePermissionProposal(stateDir, proposal) {
+  await ensureStateDir(stateDir);
+  await writeFile(
+    permissionProposalPath(stateDir, proposal.id),
+    `${JSON.stringify(proposal, null, 2)}\n`,
+    "utf8"
+  );
+}
+
+async function readPermissionProposal(stateDir, proposalId) {
+  if (!proposalId?.trim()) {
+    throw new Error("permissions show/export requires --proposal-id <id>");
+  }
+  const proposal = JSON.parse(await readFile(permissionProposalPath(stateDir, proposalId), "utf8"));
+  if (!isPlainObject(proposal) || proposal.version !== 1 || !Array.isArray(proposal.candidates)) {
+    throw new Error(`Invalid permission proposal: ${proposalId}`);
+  }
+  return proposal;
+}
+
+async function runPermissionsShow(options) {
+  const stateDir = resolveStateDir(options.stateDir);
+  const proposal = await readPermissionProposal(stateDir, options.proposalId);
+  return {
+    ok: true,
+    status: "completed",
+    stateDir,
+    proposalPath: permissionProposalPath(stateDir, proposal.id),
+    proposal,
+    nextCommands: buildPermissionNextCommands(proposal.id)
+  };
+}
+
+async function runPermissionsExport(options) {
+  const stateDir = resolveStateDir(options.stateDir);
+  const proposal = await readPermissionProposal(stateDir, options.proposalId);
+  const format = options.format || "allowed-tools";
+  if (format !== "allowed-tools") {
+    throw new Error(`Unsupported permissions export format: ${format}`);
+  }
+  if (proposal.approved !== true) {
+    throw new Error(
+      `Permission proposal ${proposal.id} is not approved. Review and edit the proposal file to set "approved": true before export.`
+    );
+  }
+  const allowedTools = proposal.candidates
+    .map((candidate) => candidate.pattern)
+    .filter(Boolean)
+    .sort();
+  return {
+    ok: true,
+    status: "completed",
+    stateDir,
+    proposalPath: permissionProposalPath(stateDir, proposal.id),
+    proposalId: proposal.id,
+    format,
+    allowedTools,
+    argv: allowedTools.length > 0 ? ["--allowedTools", ...allowedTools] : []
+  };
+}
+
+function buildPermissionNextCommands(proposalId) {
+  return {
+    show: `node scripts/claude-companion.mjs permissions show --proposal-id ${proposalId}`,
+    export: `node scripts/claude-companion.mjs permissions export --proposal-id ${proposalId} --format allowed-tools`
+  };
+}
+
+function renderHumanPermissions(result) {
+  if (result.format === "allowed-tools") {
+    return renderHumanPermissionsExport(result);
+  }
+  return renderHumanPermissionsProposal(result);
+}
+
+function renderHumanPermissionsProposal(result) {
+  const proposal = result.proposal;
+  const lines = [
+    `Permission proposal: ${proposal.id}`,
+    `Workspace: ${proposal.workspaceRoot}`,
+    `Approved: ${proposal.approved === true ? "yes" : "no"}`,
+    `Candidates: ${proposal.candidateCount ?? proposal.candidates.length}`,
+    `Path: ${result.proposalPath}`
+  ];
+  if (proposal.candidates.length === 0) {
+    lines.push("", "No permission candidates found.");
+  } else {
+    for (const candidate of proposal.candidates) {
+      lines.push(
+        "",
+        `[${candidate.risk}] ${candidate.pattern}`,
+        `  Confidence: ${candidate.confidence}`,
+        `  Jobs: ${candidate.sourceJobIds.join(", ")}`,
+        `  Rationale: ${candidate.rationale}`
+      );
+    }
+  }
+  if (result.nextCommands) {
+    lines.push("", `Show: ${result.nextCommands.show}`, `Export: ${result.nextCommands.export}`);
+  }
+  return lines.join("\n");
+}
+
+function renderHumanPermissionsExport(result) {
+  if (result.allowedTools.length === 0) {
+    return "No allowed tools to export.";
+  }
+  return [
+    `Permission proposal: ${result.proposalId}`,
+    "Allowed tools:",
+    ...result.allowedTools.map((tool) => `- ${tool}`),
+    "",
+    "Arguments:",
+    result.argv.map((arg) => JSON.stringify(arg)).join(" ")
+  ].join("\n");
+}
+
 function runCommand(command, args, { cwd, input = null } = {}) {
   return new Promise((resolve) => {
     const stdoutChunks = [];
@@ -1992,7 +2437,7 @@ function renderHumanHookStopReview(result) {
 }
 
 async function main() {
-  const { command, options } = parseArgs(process.argv.slice(2));
+  const { command, options, rest } = parseArgs(process.argv.slice(2));
 
   if (options.help || command === null) {
     console.log(usage());
@@ -2045,6 +2490,16 @@ async function main() {
       console.log(JSON.stringify(result, null, 2));
     } else {
       console.log(renderHumanCancel(result));
+    }
+    process.exit(result.ok ? 0 : 1);
+  }
+
+  if (command === "permissions") {
+    const result = await runPermissions(options, rest);
+    if (options.json) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log(renderHumanPermissions(result));
     }
     process.exit(result.ok ? 0 : 1);
   }
