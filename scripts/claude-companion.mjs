@@ -724,6 +724,7 @@ function parseClaudeStream(stdout) {
   const malformedLines = [];
   const text = [];
   let finalText = "";
+  let modelUsage = null;
 
   for (const rawLine of stdout.split(/\r?\n/)) {
     const line = rawLine.trim();
@@ -749,6 +750,11 @@ function parseClaudeStream(stdout) {
     if (candidateFinal) {
       finalText = candidateFinal;
     }
+
+    const candidateModelUsage = extractModelUsageFromEvent(event);
+    if (candidateModelUsage) {
+      modelUsage = candidateModelUsage;
+    }
   }
 
   return {
@@ -756,8 +762,33 @@ function parseClaudeStream(stdout) {
     finalText,
     eventCount: parsedEvents.length,
     malformedLineCount: malformedLines.length,
-    malformedLines
+    malformedLines,
+    ...(modelUsage ? { modelUsage } : {})
   };
+}
+
+function extractModelUsageFromEvent(event) {
+  const candidates = [
+    event.modelUsage,
+    event.model_usage,
+    event.usage,
+    event.raw?.modelUsage,
+    event.raw?.model_usage,
+    event.stream_event?.modelUsage,
+    event.stream_event?.model_usage,
+    event.stream_event?.usage,
+    event.stream_event?.raw?.modelUsage,
+    event.event?.modelUsage,
+    event.event?.model_usage,
+    event.event?.usage,
+    event.event?.raw?.modelUsage
+  ];
+
+  return candidates.find((candidate) => isPlainObject(candidate)) ?? null;
+}
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function extractTextFromEvent(event) {
@@ -863,15 +894,99 @@ function renderHumanStatus(result) {
   if (result.jobs.length === 0) {
     return "No Claude jobs found.";
   }
-  return result.jobs
-    .map((job) => `${job.id} ${job.status} ${job.kind} ${job.summary || ""}`.trim())
-    .join("\n");
+  const lines = ["Claude jobs"];
+  for (const job of result.jobs) {
+    lines.push("", `[${job.status}] ${job.id} (${job.kind})`);
+    if (job.summary) {
+      lines.push(`  Summary: ${job.summary}`);
+    }
+    lines.push(`  Session: ${job.claudeSessionId || "unknown"}`);
+    lines.push(`  ${formatJobRuntime(job)}`);
+    if (job.exitCode !== null && job.exitCode !== undefined) {
+      lines.push(`  Exit: ${job.exitCode}`);
+    }
+    if (job.signal) {
+      lines.push(`  Signal: ${job.signal}`);
+    }
+    if (job.modelUsage) {
+      lines.push(`  Model usage: ${formatModelUsage(job.modelUsage)}`);
+    }
+    lines.push(`  Updated: ${job.updatedAt || "unknown"}`);
+    lines.push(`  Result: ${job.nextCommands.result}`);
+    if (job.nextCommands.cancel) {
+      lines.push(`  Cancel: ${job.nextCommands.cancel}`);
+    }
+  }
+  return lines.join("\n");
 }
 
 function renderHumanResult(result) {
-  const lines = [`Job: ${result.job.id}`, `Status: ${result.job.status}`, ""];
+  const lines = [
+    `Job: ${result.job.id}`,
+    `Status: ${result.job.status}`,
+    `Kind: ${result.job.kind}`,
+    `Session: ${result.job.claudeSessionId || "unknown"}`,
+    formatJobRuntime(result.job)
+  ];
+  if (result.job.cwd) {
+    lines.push(`Cwd: ${result.job.cwd}`);
+  }
+  if (result.job.createdAt) {
+    lines.push(`Created: ${result.job.createdAt}`);
+  }
+  if (result.job.updatedAt) {
+    lines.push(`Updated: ${result.job.updatedAt}`);
+  }
+  if (result.job.exitCode !== null && result.job.exitCode !== undefined) {
+    lines.push(`Exit: ${result.job.exitCode}`);
+  }
+  if (result.job.signal) {
+    lines.push(`Signal: ${result.job.signal}`);
+  }
+  if (result.job.modelUsage) {
+    lines.push(`Model usage: ${formatModelUsage(result.job.modelUsage)}`);
+  }
+  lines.push(`Result command: ${result.job.nextCommands.result}`);
+  if (result.job.nextCommands.cancel) {
+    lines.push(`Cancel command: ${result.job.nextCommands.cancel}`);
+  }
+  lines.push("");
   lines.push(result.result || "No result is available yet.");
   return lines.join("\n");
+}
+
+function formatJobRuntime(job) {
+  return [
+    `Model: ${job.model || "unknown"}`,
+    `Effort: ${job.effort || "default"}`,
+    `Permission: ${job.permissionMode || "unknown"}`,
+    `Isolation: ${job.isolation || "unknown"}`
+  ].join(" | ");
+}
+
+function formatModelUsage(modelUsage) {
+  return Object.keys(modelUsage)
+    .sort()
+    .map((key) => `${key}=${formatModelUsageValue(modelUsage[key])}`)
+    .join(", ");
+}
+
+function formatModelUsageValue(value) {
+  if (isPlainObject(value)) {
+    return JSON.stringify(sortObjectKeys(value));
+  }
+  if (Array.isArray(value)) {
+    return JSON.stringify(value);
+  }
+  return String(value);
+}
+
+function sortObjectKeys(value) {
+  return Object.fromEntries(
+    Object.keys(value)
+      .sort()
+      .map((key) => [key, isPlainObject(value[key]) ? sortObjectKeys(value[key]) : value[key]])
+  );
 }
 
 function renderHumanCancel(result) {
@@ -1016,7 +1131,7 @@ async function startBackgroundRescue({ options, cwd, model, effort, permissionMo
   return {
     ok: true,
     status: "running",
-    job: sanitizeJob(updatedJob)
+    job: await decorateJobForOutput(updatedJob)
   };
 }
 
@@ -1034,7 +1149,7 @@ async function waitForBackgroundJob({ stateDir, jobId, timeoutMs }) {
       return {
         ok: job.status === "completed",
         status: job.status,
-        job: sanitizeJob(job),
+        job: await decorateJobForOutput(job),
         result,
         wait: {
           timedOut: false,
@@ -1053,7 +1168,7 @@ async function waitForBackgroundJob({ stateDir, jobId, timeoutMs }) {
   return {
     ok: false,
     status: "timed_out",
-    job: sanitizeJob(job),
+    job: await decorateJobForOutput(job),
     result: await readJobResult(job),
     wait: {
       timedOut: true,
@@ -1114,7 +1229,15 @@ async function runRescueJob(options) {
   await writeFile(job.resultPath, persistedResult, "utf8");
   await writeFile(
     job.sessionPath,
-    `${JSON.stringify({ claudeSessionId: job.claudeSessionId, stream }, null, 2)}\n`,
+    `${JSON.stringify(
+      {
+        claudeSessionId: job.claudeSessionId,
+        stream,
+        ...(stream.modelUsage ? { modelUsage: stream.modelUsage } : {})
+      },
+      null,
+      2
+    )}\n`,
     "utf8"
   );
   await patchJob(stateDir, job.id, {
@@ -1122,7 +1245,8 @@ async function runRescueJob(options) {
     childPid: null,
     exitCode: invocation.exitCode,
     signal: invocation.signal,
-    summary
+    summary,
+    ...(stream.modelUsage ? { modelUsage: stream.modelUsage } : {})
   });
 }
 
@@ -1151,14 +1275,14 @@ async function runStatus(options) {
   const stateDir = resolveStateDir(options.stateDir);
   const jobs = await refreshStaleJobs(stateDir, await readJobs(stateDir));
   const limit = Number.isFinite(options.limit) && options.limit > 0 ? options.limit : 20;
+  const selectedJobs = jobs
+    .slice()
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+    .slice(0, limit);
   return {
     ok: true,
     stateDir,
-    jobs: jobs
-      .slice()
-      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-      .slice(0, limit)
-      .map(sanitizeJob)
+    jobs: await Promise.all(selectedJobs.map((job) => decorateJobForOutput(job)))
   };
 }
 
@@ -1172,7 +1296,7 @@ async function runResult(options) {
   const result = await readJobResult(job);
   return {
     ok: job.status === "completed" || result.length > 0,
-    job: sanitizeJob(job),
+    job: await decorateJobForOutput(job),
     result
   };
 }
@@ -1200,7 +1324,7 @@ async function runCancel(options) {
     return {
       ok: true,
       status: job.status,
-      job: sanitizeJob(job)
+      job: await decorateJobForOutput(job)
     };
   }
 
@@ -1221,7 +1345,7 @@ async function runCancel(options) {
       return {
         ok: true,
         status: "cancelling",
-        job: sanitizeJob(cancellingJob)
+        job: await decorateJobForOutput(cancellingJob)
       };
     }
   }
@@ -1233,7 +1357,7 @@ async function runCancel(options) {
   return {
     ok: true,
     status: "cancelled",
-    job: sanitizeJob(cancelledJob)
+    job: await decorateJobForOutput(cancelledJob)
   };
 }
 
@@ -1313,6 +1437,43 @@ function delay(ms) {
 function sanitizeJob(job) {
   const { prompt, ...safeJob } = job;
   return safeJob;
+}
+
+async function decorateJobForOutput(job) {
+  const safeJob = sanitizeJob(job);
+  const sessionMetadata = await readJobSessionMetadata(safeJob);
+  const modelUsage =
+    safeJob.modelUsage || sessionMetadata?.modelUsage || sessionMetadata?.stream?.modelUsage;
+  if (modelUsage) {
+    safeJob.modelUsage = modelUsage;
+  }
+  safeJob.nextCommands = buildNextCommands(safeJob);
+  return safeJob;
+}
+
+async function readJobSessionMetadata(job) {
+  if (!job.sessionPath) {
+    return null;
+  }
+  try {
+    const metadata = JSON.parse(await readFile(job.sessionPath, "utf8"));
+    return isPlainObject(metadata) ? metadata : null;
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+}
+
+function buildNextCommands(job) {
+  const commands = {
+    result: `node scripts/claude-companion.mjs result --job-id ${job.id}`
+  };
+  if (job.status === "running" || job.status === "cancelling") {
+    commands.cancel = `node scripts/claude-companion.mjs cancel --job-id ${job.id}`;
+  }
+  return commands;
 }
 
 function runCommand(command, args, { cwd, input = null } = {}) {
