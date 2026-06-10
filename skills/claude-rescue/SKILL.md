@@ -45,4 +45,10 @@ Useful options:
 - `--bare` for strict isolation when using `claude setup-token`, `ANTHROPIC_API_KEY`, Bedrock, Vertex, or `apiKeyHelper`.
 - `--state-dir <path>` for tests or custom plugin data locations.
 
+Model guidance:
+
+- Use `--model opus` for serious rescue work, hard debugging, important edits, or decisions that need high confidence.
+- Use `--effort low` for smoke tests, cheap sanity checks, or explicitly low-effort requests.
+- Do not assume short aliases always map to the expected backend model. After real Claude calls, inspect and report actual model usage from JSON output when available.
+
 Use `claude-status`, `claude-result`, and `claude-cancel` for managed background jobs.

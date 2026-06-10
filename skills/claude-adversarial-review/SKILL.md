@@ -36,3 +36,9 @@ This uses the same schema, diff collection, and JSON parsing as `claude-review`,
 It also uses the same single-review diff limit as `claude-review`: 200000 bytes by default, configurable with `--max-diff-bytes <n>`.
 
 Use `--effort <level>` to pass Claude Code effort: `low`, `medium`, `high`, `xhigh`, or `max`.
+
+Model guidance:
+
+- Use `--model opus` for serious adversarial review, merge readiness, or high-risk design validation.
+- Use `--effort low` only for smoke tests, cheap sanity checks, or explicitly low-effort requests.
+- Do not assume short aliases always map to the expected backend model. After real Claude calls, inspect and report actual model usage from JSON output when available.

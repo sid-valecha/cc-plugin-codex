@@ -36,10 +36,16 @@ export CLAUDE_COMPANION_STOP_REVIEW_BLOCKING=1
 
 Useful options:
 
-- `CLAUDE_COMPANION_STOP_REVIEW_MODEL=haiku` to choose a model.
+- `CLAUDE_COMPANION_STOP_REVIEW_MODEL=opus` to choose the model for serious review gates.
 - `CLAUDE_COMPANION_STOP_REVIEW_EFFORT=low` to choose Claude Code effort.
 - `CLAUDE_COMPANION_STOP_REVIEW_BASE=main` to review `main...HEAD`.
 - `CLAUDE_COMPANION_STOP_REVIEW_ADVERSARIAL=1` to use the adversarial review prompt.
+
+Model guidance:
+
+- Use `CLAUDE_COMPANION_STOP_REVIEW_MODEL=opus` for serious blocking gates or important merge-readiness checks.
+- Use `CLAUDE_COMPANION_STOP_REVIEW_EFFORT=low` only for smoke tests, cheap sanity checks, or explicitly low-effort requests.
+- Do not assume short aliases always map to the expected backend model. After real Claude calls, inspect and report actual model usage from JSON output when available.
 
 Manual smoke test:
 

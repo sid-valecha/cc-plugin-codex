@@ -35,3 +35,9 @@ Useful options:
 - `--max-diff-bytes <n>` to raise or lower the single-review diff limit. The default is 200000 bytes.
 
 Review always uses Claude Code `--permission-mode plan` and one-shot JSON output. It should not edit files.
+
+Model guidance:
+
+- Use `--model opus` for serious reviews, merge readiness, hook gate validation, or high-risk changes.
+- Use `--effort low` for smoke tests, cheap sanity checks, or explicitly low-effort requests.
+- Do not assume short aliases always map to the expected backend model. After real Claude calls, inspect and report actual model usage from JSON output when available.
