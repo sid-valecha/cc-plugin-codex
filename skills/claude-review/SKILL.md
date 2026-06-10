@@ -21,6 +21,12 @@ Review a branch diff:
 node scripts/claude-companion.mjs review --base main
 ```
 
+Run a stricter review over the same schema:
+
+```bash
+node scripts/claude-companion.mjs review --adversarial --base main
+```
+
 For machine-readable output:
 
 ```bash
@@ -35,6 +41,7 @@ Useful options:
 - `--effort <level>` to pass Claude Code effort: `low`, `medium`, `high`, `xhigh`, or `max`.
 - `--schema <path>` to override the review JSON schema.
 - `--max-diff-bytes <n>` to raise or lower the single-review diff limit. The default is 200000 bytes.
+- `--adversarial` to use a stricter prompt that challenges assumptions and looks for subtle concrete failure modes.
 
 Review always uses Claude Code `--permission-mode plan` and one-shot JSON output. It should not edit files.
 

@@ -45,4 +45,4 @@ The `cc-plugin-codex-validate` conda environment exists for plugin validation an
 conda create -y -n cc-plugin-codex-validate python=3.14 pyyaml
 ```
 
-Real Claude smoke tests should use `--effort low`. Serious validation should use `--model opus` only when the user approves the cost and quota impact.
+Real Claude smoke tests should use `--effort low`. Serious validation should use `--model opus` only when the user approves the cost and quota impact. Prefer `review --adversarial` over the separate `adversarial-review` alias in user-facing guidance.

@@ -1,6 +1,6 @@
 # Claude Code Companion for Codex
 
-This repository contains a Codex plugin that lets Codex use Claude Code as a local guest subprocess. The current implementation includes setup diagnostics, foreground rescue, managed background rescue jobs, structured review, and adversarial review.
+This repository contains a Codex plugin that lets Codex use Claude Code as a local guest subprocess. The current implementation includes setup diagnostics, foreground rescue, planning, UI/design help, managed background jobs, structured review, and permission proposal analysis.
 
 ## Quickstart
 
@@ -32,6 +32,8 @@ claude install stable
 
 If auth is missing, use `claude auth login --claudeai` for Claude subscription accounts. For strict `--bare` mode, use `claude setup-token`, `ANTHROPIC_API_KEY`, Bedrock with `CLAUDE_CODE_USE_BEDROCK=1`, Vertex with `CLAUDE_CODE_USE_VERTEX=1`, or Claude Code `apiKeyHelper`.
 
+First-run live Claude calls also need host approval because they can send prompts, diffs, or workspace context to Claude Code. When Codex offers persistent approvals, approve the narrow command prefix for the mode you are using once, then future calls should not need repeated approval unless auth, policy, or host settings change. See Host Permissions below.
+
 ## Codex Skill
 
 The initial user-facing skill is:
@@ -44,7 +46,6 @@ The initial user-facing skill is:
 - `claude-result`: read the latest or selected Claude job result.
 - `claude-cancel`: cancel a running Claude job.
 - `claude-review`: run a structured, read-only Claude Code review.
-- `claude-adversarial-review`: run a stricter read-only review over the same schema.
 - `claude-stop-review-hook`: configure the optional Codex Stop hook review flow.
 - `claude-permissions`: analyze plugin-owned Claude logs for permission prompts and export reviewed `--allowedTools` arguments.
 
@@ -109,6 +110,8 @@ node scripts/claude-companion.mjs permissions export --proposal-id <proposal-id>
 ```
 
 Permission proposals are written under plugin state and must be reviewed before export. The export command refuses proposals unless the proposal file has been explicitly edited to set `"approved": true`. Export prints `--allowedTools` arguments only; rescue does not consume proposals automatically.
+
+Use `node scripts/claude-companion.mjs review --adversarial` when you want the same structured review with a stricter prompt that looks harder for subtle failure modes. The compatibility alias `adversarial-review` still exists, but `claude-review` is the main review skill.
 
 Rescue defaults to model `sonnet`, standard noninteractive Claude mode, permission mode `acceptEdits`, and a new Claude session for each invocation. `plan` always uses read-only `plan` permission mode. `ui`/`design` use `acceptEdits` by default and switch to read-only critique with `--plan`. Add `--resume` to continue the latest completed or failed rescue session in the same resolved workspace. Add `--fresh` to make the new-session choice explicit. For serious rescue, planning, UI/design, or review work, prefer `--model opus`. Use `--plan` for read-only planning, `--model spark` to map to `haiku`, `--permission-mode auto` for Claude's auto permission classifier, and `--danger` only when `bypassPermissions` is explicitly intended. Use `--bare` only when you want strict isolation and have bare-compatible auth such as `claude setup-token`, `ANTHROPIC_API_KEY`, provider credentials, or `apiKeyHelper`. With `--background`, add `--wait` to keep the foreground command open until the job completes, fails, is cancelled, or reaches `--wait-timeout-ms` milliseconds. The default wait timeout is 300000ms.
 
@@ -236,10 +239,9 @@ node scripts/claude-companion.mjs plan
 node scripts/claude-companion.mjs ui
 node scripts/claude-companion.mjs design
 node scripts/claude-companion.mjs review
-node scripts/claude-companion.mjs adversarial-review
 ```
 
-Only approve the modes you want available. For example, a read-only setup can approve `plan` and `review` without approving write-capable `rescue` or `ui`. If tenant policy blocks external disclosure, the plugin must not bypass it; local commands such as `setup`, `status`, `result`, `cancel`, and permission proposal inspection can still work.
+Only approve the modes you want available. For example, a read-only setup can approve `plan` and `review` without approving write-capable `rescue` or `ui`. The stricter review path uses the same `review` command with `--adversarial`, so it does not need a separate first-run approval. If tenant policy blocks external disclosure, the plugin must not bypass it; local commands such as `setup`, `status`, `result`, `cancel`, and permission proposal inspection can still work.
 
 More detail is tracked in `context/host-permissions.md`.
 
@@ -264,7 +266,7 @@ Sandbox and network prompts:
 
 - `npm test` and fake-Claude tests should run without network access.
 - `conda create`, dependency installation, `git push`, `gh pr create`, and real Claude calls need network access.
-- Real rescue, plan, UI/design, review, adversarial review, and enabled Stop-hook review calls send prompts, diffs, or workspace context to Claude Code and may spend quota.
+- Real rescue, plan, UI/design, review, and enabled Stop-hook review calls send prompts, diffs, or workspace context to Claude Code and may spend quota.
 - If Codex blocks a real Claude call under external-disclosure policy, that environment cannot use the live Claude delegation commands until the user or organization allows them.
 
 Model aliases and usage:
