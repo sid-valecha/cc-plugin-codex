@@ -147,6 +147,40 @@ You can test the helper directly without installing hooks:
 node scripts/claude-companion.mjs hook-stop-review --json
 ```
 
+## Parity With `openai/codex-plugin-cc`
+
+This plugin mirrors the core shape of [`openai/codex-plugin-cc`](https://github.com/openai/codex-plugin-cc) in the opposite direction: Codex is the host and Claude Code is the delegated guest.
+
+| Area | `openai/codex-plugin-cc` | Claude Code Companion | Status |
+| --- | --- | --- | --- |
+| Host application | Claude Code | Codex | Mirrored |
+| Guest agent | Codex | Claude Code | Mirrored |
+| User surface | Claude slash commands | Codex skills | Implemented using Codex-native skills |
+| Setup diagnostics | `/codex:setup` | `claude-setup`, `setup` | Implemented |
+| Foreground rescue | `/codex:rescue` | `claude-rescue`, `rescue` | Implemented |
+| Background jobs | `--background` | `--background` | Implemented |
+| Status | `/codex:status` | `claude-status`, `status` | Implemented |
+| Result | `/codex:result` | `claude-result`, `result` | Implemented |
+| Cancel | `/codex:cancel` | `claude-cancel`, `cancel` | Implemented |
+| Structured review | `/codex:review` | `claude-review`, `review` | Implemented |
+| Adversarial review | `/codex:adversarial-review` | `claude-adversarial-review`, `adversarial-review` | Implemented |
+| Stop review gate | setup-managed Stop hook | optional `claude-stop-review-hook` | Implemented, inert until explicitly enabled |
+| Wait mode | `--wait` | Not implemented | Remaining parity work |
+| Resume/fresh rescue | `--resume`, `--fresh` | Not implemented | Remaining parity work |
+| Session handoff | `codex resume <session>` guidance | Claude session id is stored, no handoff UX yet | Remaining parity work |
+| Install/update flow | Claude plugin marketplace install | local repo/plugin install notes only | Remaining parity work |
+| Default model policy | Codex config-driven | Claude Code args plus skill guidance | Partially implemented |
+| Permission learning | Deferred | Deferred allowlist idea | Remaining parity work |
+
+Known non-parity gaps to close before release candidate:
+
+- Add `--wait` for foreground waiting on background jobs.
+- Add `--resume` and `--fresh` rescue ergonomics, including clear behavior for continuing the latest Claude session in a repo.
+- Improve `status` and `result` rendering with Claude session ids, actual model usage when available, and direct next commands.
+- Add install/update and local marketplace guidance for a fresh user.
+- Add troubleshooting notes for Claude auth, hook trust, sandbox/network prompts, and model alias routing.
+- Design the deferred permission-learning flow for recurring Claude permission prompts and `--allowedTools`.
+
 ## Development
 
 This project uses Node ESM and Node's built-in test runner.
