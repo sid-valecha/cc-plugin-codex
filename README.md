@@ -93,6 +93,136 @@ Future worktree workflows are intentionally not implemented yet.
 
 Human `status` and `result` output includes job id, status, Claude session id, model, effort, permission mode, isolation, exit information when relevant, model usage when Claude reports it, and useful follow-up commands. JSON output preserves existing fields and may include `modelUsage` and `nextCommands` on job objects when available.
 
+## Local Install And Update
+
+For development without installing the plugin, run the helper commands directly from this checkout. Codex skill files live under `skills/`, and the deterministic entry point is:
+
+```bash
+node scripts/claude-companion.mjs <subcommand>
+```
+
+For a local Codex plugin install, use a local marketplace entry that points at this plugin source. The default personal marketplace file is:
+
+```text
+~/.agents/plugins/marketplace.json
+```
+
+The default personal marketplace is discovered implicitly by Codex. Do not run `codex plugin marketplace add` for that default path. Non-default marketplace files must be added explicitly with `codex plugin marketplace add <path-to-marketplace-root>`.
+
+A personal marketplace entry for this plugin should use the plugin name from `.codex-plugin/plugin.json` and a local source path relative to the marketplace root:
+
+```json
+{
+  "name": "cc-plugin-codex",
+  "source": {
+    "source": "local",
+    "path": "./plugins/cc-plugin-codex"
+  },
+  "policy": {
+    "installation": "AVAILABLE",
+    "authentication": "ON_INSTALL"
+  },
+  "category": "Productivity"
+}
+```
+
+With the default personal marketplace, that source path resolves to:
+
+```text
+~/plugins/cc-plugin-codex
+```
+
+Place this checkout there, or adjust the marketplace entry to point at the local checkout path you are actually editing. If the plugin is exposed through a non-default marketplace, confirm that the configured marketplace still points at this source before reinstalling.
+
+After the marketplace entry exists, install or reinstall the plugin with:
+
+```bash
+codex plugin add cc-plugin-codex@personal
+```
+
+If your personal marketplace has a different top-level `name`, read it with:
+
+```bash
+python3 /Users/sidvalecha/.codex/skills/.system/plugin-creator/scripts/read_marketplace_name.py
+```
+
+Then substitute the printed marketplace name:
+
+```bash
+codex plugin add cc-plugin-codex@<marketplace-name>
+```
+
+When iterating on an already-installed local plugin, update the manifest cachebuster instead of hand-editing marketplace files:
+
+```bash
+python3 /Users/sidvalecha/.codex/skills/.system/plugin-creator/scripts/update_plugin_cachebuster.py .
+codex plugin add cc-plugin-codex@<marketplace-name>
+```
+
+Start a new Codex thread after reinstalling so Codex picks up updated skills, hooks, and metadata.
+
+## Validation And Smoke Tests
+
+Use the fake-Claude deterministic suite first. It does not require Claude auth and does not make billable calls:
+
+```bash
+npm test
+node --check scripts/claude-companion.mjs
+```
+
+Plugin validation needs Python with PyYAML. A dedicated conda environment keeps that dependency out of the system Python:
+
+```bash
+conda create -y -n cc-plugin-codex-validate python=3.14 pyyaml
+conda run -n cc-plugin-codex-validate python /Users/sidvalecha/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py .
+```
+
+Manual non-billable checks:
+
+```bash
+node scripts/claude-companion.mjs setup --json
+node scripts/claude-companion.mjs status --limit 5
+node scripts/claude-companion.mjs result
+```
+
+Real Claude smoke tests require Claude auth and may spend quota. Use low effort for cheap checks:
+
+```bash
+node scripts/claude-companion.mjs rescue --prompt "Reply with OK only" --effort low --model sonnet --json
+node scripts/claude-companion.mjs rescue --prompt "Reply with OK only" --background --wait --effort low --model sonnet --json
+node scripts/claude-companion.mjs review --effort low --model sonnet --json
+```
+
+Use `--model opus` only for serious validation when the cost and quota impact are acceptable.
+
+## Troubleshooting
+
+Claude auth:
+
+- `node scripts/claude-companion.mjs setup --json` should show `claudeAuth.ok: true`.
+- If it reports unauthenticated, run `claude auth login --claudeai` for Claude subscription auth.
+- For strict `--bare` mode, use bare-compatible auth such as `claude setup-token`, `ANTHROPIC_API_KEY`, Bedrock, Vertex, or `apiKeyHelper`.
+- A rescue result like `Not logged in · Please run /login` means the plugin reached Claude Code, but Claude Code rejected the request before model execution.
+
+Hook trust:
+
+- The Stop hook is inert until explicitly enabled.
+- Codex still requires non-managed hooks to be reviewed and trusted before they can run.
+- If the hook runs from another workspace, set `CLAUDE_COMPANION_PLUGIN_ROOT=/absolute/path/to/cc-plugin-codex`.
+- Enable the hook with `CLAUDE_COMPANION_STOP_REVIEW=1` or a per-repo `.codex/claude-stop-review.enabled` marker.
+
+Sandbox and network prompts:
+
+- `npm test` and fake-Claude tests should run without network access.
+- `conda create`, dependency installation, `git push`, `gh pr create`, and real Claude calls need network access.
+- Real rescue and review calls send prompts or diffs to Claude Code and may spend quota.
+
+Model aliases and usage:
+
+- The plugin maps `--model spark` to `haiku` and otherwise passes model strings through to Claude Code.
+- Do not assume short aliases route to a specific backend model. Prefer full Claude model IDs when exact routing matters.
+- After real Claude calls, inspect `modelUsage` in JSON output or stored job metadata when Claude reports it.
+
 Run a structured read-only review:
 
 ```bash
@@ -188,14 +318,12 @@ This plugin mirrors the core shape of [`openai/codex-plugin-cc`](https://github.
 | Wait mode | `--wait` | `--background --wait` | Implemented |
 | Resume/fresh rescue | `--resume`, `--fresh` | `--resume`, `--fresh` | Implemented |
 | Session handoff | `codex resume <session>` guidance | Claude session id is stored and `--resume` continues the latest workspace rescue session | Partially implemented |
-| Install/update flow | Claude plugin marketplace install | local repo/plugin install notes only | Remaining parity work |
+| Install/update flow | Claude plugin marketplace install | local marketplace and cachebuster reinstall guidance | Documented |
 | Default model policy | Codex config-driven | Claude Code args plus skill guidance | Partially implemented |
 | Permission learning | Deferred | Deferred allowlist idea | Remaining parity work |
 
 Known non-parity gaps to close before release candidate:
 
-- Add install/update and local marketplace guidance for a fresh user.
-- Add troubleshooting notes for Claude auth, hook trust, sandbox/network prompts, and model alias routing.
 - Design the deferred permission-learning flow for recurring Claude permission prompts and `--allowedTools`.
 
 ## Development
