@@ -57,6 +57,12 @@ Start a background rescue job:
 node scripts/claude-companion.mjs rescue --prompt "Inspect the failing test and suggest a fix" --background
 ```
 
+Start a background job and wait for it to finish:
+
+```bash
+node scripts/claude-companion.mjs rescue --prompt "Inspect the failing test and suggest a fix" --background --wait
+```
+
 Inspect and manage jobs:
 
 ```bash
@@ -65,7 +71,7 @@ node scripts/claude-companion.mjs result --job-id <job-id>
 node scripts/claude-companion.mjs cancel --job-id <job-id>
 ```
 
-Rescue defaults to model `sonnet`, standard noninteractive Claude mode, and permission mode `acceptEdits`. For serious rescue or review work, prefer `--model opus`. Use `--plan` for read-only planning, `--model spark` to map to `haiku`, `--permission-mode auto` for Claude's auto permission classifier, and `--danger` only when `bypassPermissions` is explicitly intended. Use `--bare` only when you want strict isolation and have bare-compatible auth such as `claude setup-token`, `ANTHROPIC_API_KEY`, provider credentials, or `apiKeyHelper`.
+Rescue defaults to model `sonnet`, standard noninteractive Claude mode, and permission mode `acceptEdits`. For serious rescue or review work, prefer `--model opus`. Use `--plan` for read-only planning, `--model spark` to map to `haiku`, `--permission-mode auto` for Claude's auto permission classifier, and `--danger` only when `bypassPermissions` is explicitly intended. Use `--bare` only when you want strict isolation and have bare-compatible auth such as `claude setup-token`, `ANTHROPIC_API_KEY`, provider credentials, or `apiKeyHelper`. With `--background`, add `--wait` to keep the foreground command open until the job completes, fails, is cancelled, or reaches `--wait-timeout-ms` milliseconds. The default wait timeout is 300000ms.
 
 Use `--effort low`, `--effort medium`, `--effort high`, `--effort xhigh`, or `--effort max` to pass Claude Code's effort setting. Use `--effort low` for smoke tests, cheap sanity checks, and explicitly low-effort requests. Claude Code may route short model aliases differently than expected; when cost matters, prefer a full Claude Code model ID and inspect the raw `modelUsage` in `--json` output. After any real Claude call, report the actual model used from `raw.modelUsage` when available.
 
@@ -165,7 +171,7 @@ This plugin mirrors the core shape of [`openai/codex-plugin-cc`](https://github.
 | Structured review | `/codex:review` | `claude-review`, `review` | Implemented |
 | Adversarial review | `/codex:adversarial-review` | `claude-adversarial-review`, `adversarial-review` | Implemented |
 | Stop review gate | setup-managed Stop hook | optional `claude-stop-review-hook` | Implemented, inert until explicitly enabled |
-| Wait mode | `--wait` | Not implemented | Remaining parity work |
+| Wait mode | `--wait` | `--background --wait` | Implemented |
 | Resume/fresh rescue | `--resume`, `--fresh` | Not implemented | Remaining parity work |
 | Session handoff | `codex resume <session>` guidance | Claude session id is stored, no handoff UX yet | Remaining parity work |
 | Install/update flow | Claude plugin marketplace install | local repo/plugin install notes only | Remaining parity work |
@@ -174,7 +180,6 @@ This plugin mirrors the core shape of [`openai/codex-plugin-cc`](https://github.
 
 Known non-parity gaps to close before release candidate:
 
-- Add `--wait` for foreground waiting on background jobs.
 - Add `--resume` and `--fresh` rescue ergonomics, including clear behavior for continuing the latest Claude session in a repo.
 - Improve `status` and `result` rendering with Claude session ids, actual model usage when available, and direct next commands.
 - Add install/update and local marketplace guidance for a fresh user.
