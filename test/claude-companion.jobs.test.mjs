@@ -30,6 +30,10 @@ async function makeFakeClaudeBin() {
       "  echo 'simulated Claude crash' >&2",
       "  exit 17",
       "fi",
+      "if [ \"$FAKE_CLAUDE_STREAM\" = \"permission-block\" ]; then",
+      "  printf '%s\\n' '{\"type\":\"result\",\"result\":\"This command requires approval. Once approved, the command to run is:\\n\\n```bash\\npython3 -m unittest discover -s .\\n```\"}'",
+      "  exit 0",
+      "fi",
       "echo '{\"type\":\"stream_event\",\"stream_event\":{\"delta\":{\"text\":\"Background \"}}}'",
       "if [ \"$FAKE_CLAUDE_USAGE\" = \"1\" ]; then",
       "  echo '{\"type\":\"result\",\"result\":\"Background done\",\"modelUsage\":{\"model\":\"claude-test\",\"inputTokens\":12,\"outputTokens\":34}}'",
@@ -303,6 +307,39 @@ test("background rescue --wait returns failed job details", async () => {
   assert.match(payload.result, /Claude rescue failed/);
   assert.match(payload.result, /Exit code: 17/);
   assert.equal(payload.wait.timedOut, false);
+});
+
+test("background rescue --wait reports Claude permission blocks", async () => {
+  const binDir = await makeFakeClaudeBin();
+  const stateDir = await mkdtemp(path.join(tmpdir(), "claude-jobs-state-"));
+
+  const result = await runCli(
+    [
+      "rescue",
+      "--prompt",
+      "Fix and run tests",
+      "--background",
+      "--wait",
+      "--state-dir",
+      stateDir,
+      "--json"
+    ],
+    {
+      binDir,
+      env: {
+        FAKE_CLAUDE_STREAM: "permission-block"
+      }
+    }
+  );
+
+  assert.equal(result.exitCode, 1, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.ok, false);
+  assert.equal(payload.status, "permission_blocked");
+  assert.equal(payload.job.status, "permission_blocked");
+  assert.equal(payload.job.permissionBlock.blockedTool, "Bash(python3 -m unittest discover -s .)");
+  assert.match(payload.result, /Claude stopped because it requested tool approval/);
+  assert.match(payload.result, /--trust-local-dev/);
 });
 
 test("cancel stops a running background rescue job", async () => {

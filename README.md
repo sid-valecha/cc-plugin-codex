@@ -119,6 +119,32 @@ Rescue defaults to model `sonnet`, standard noninteractive Claude mode, permissi
 
 Use `--effort low`, `--effort medium`, `--effort high`, `--effort xhigh`, or `--effort max` to pass Claude Code's effort setting. Use `--effort low` for smoke tests, cheap sanity checks, and explicitly low-effort requests. Claude Code may route short model aliases differently than expected; when cost matters, prefer a full Claude Code model ID and inspect the raw `modelUsage` in `--json` output. After any real Claude call, report the actual model used from `raw.modelUsage` when available.
 
+### Claude Tool Permissions
+
+Claude Code has its own tool approval layer inside the plugin invocation. Codex approval lets Codex start the plugin command; Claude approval controls what Claude Code may do after it starts, such as editing files or running tests. If Claude Code requests approval during noninteractive mode, this plugin reports `status: "permission_blocked"` instead of treating the run as successful.
+
+For trusted local repositories, use the curated development allowlist:
+
+```bash
+node scripts/claude-companion.mjs rescue --prompt "<task>" --trust-local-dev
+```
+
+`--trust-local-dev` allows common local edit/search/test tools such as `Read`, `Edit`, `Write`, `Grep`, `Glob`, `LS`, `git status`, `git diff`, Python unittest, Node test, and common package-manager test commands. It is intended for normal local development, not untrusted repositories.
+
+For narrower control, pass one or more explicit Claude Code tool patterns:
+
+```bash
+node scripts/claude-companion.mjs rescue --prompt "<task>" --allow-tool "Bash(python3 -m unittest*)"
+```
+
+Or read patterns from a JSON array or newline file:
+
+```bash
+node scripts/claude-companion.mjs rescue --prompt "<task>" --allowed-tools-file ./claude-allowed-tools.txt
+```
+
+Avoid `--danger` unless the workspace is isolated and you explicitly want Claude Code `bypassPermissions`.
+
 Job state is stored under `PLUGIN_DATA`, `CODEX_PLUGIN_DATA`, `CLAUDE_PLUGIN_DATA`, or `~/.codex/plugins/data/claude-code` in that order. Use `--state-dir <path>` for tests or custom local installs.
 
 Future worktree workflows are intentionally not implemented yet.
@@ -272,6 +298,7 @@ Sandbox and network prompts:
 - `conda create`, dependency installation, `git push`, `gh pr create`, and real Claude calls need network access.
 - Real rescue, plan, UI/design, review, and enabled Stop-hook review calls send prompts, diffs, or workspace context to Claude Code and may spend quota.
 - If Codex blocks a real Claude call under external-disclosure policy, that environment cannot use the live Claude delegation commands until the user or organization allows them.
+- If Claude Code blocks its own tool call during noninteractive rescue/UI work, the plugin reports `permission_blocked`. Rerun with a narrow `--allow-tool`, an approved `--allowed-tools-file`, or `--trust-local-dev` for trusted local repositories.
 
 Model aliases and usage:
 

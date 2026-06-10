@@ -33,5 +33,9 @@ Behavior:
 - Uses write-capable `acceptEdits` by default because UI polish often needs file edits.
 - Uses read-only `plan` permission mode when `--plan` is supplied.
 - Supports normal rescue options such as `--cwd`, `--model`, `--effort`, `--background`, `--wait`, `--resume`, `--fresh`, and `--state-dir`.
+- Use `--trust-local-dev` in trusted local frontend projects when Claude should be allowed to edit files and run common local test commands without a nested Claude approval stop.
+- Use `--allow-tool <pattern>` or `--allowed-tools-file <path>` for narrower approved Claude Code tool patterns.
 - Use `--model opus` for serious design decisions when the user approves cost and quota impact.
 - Use `--effort low` for cheap smoke checks.
+
+If Claude Code requests tool approval during noninteractive UI work, the plugin reports `permission_blocked`. Surface the blocked tool and suggest `--trust-local-dev` only for trusted local repositories, or a narrower `--allow-tool` pattern.

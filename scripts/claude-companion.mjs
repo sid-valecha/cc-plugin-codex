@@ -56,7 +56,7 @@ const CANCEL_GRACE_MS = 500;
 const STALE_RUNNING_GRACE_MS = 10000;
 const DEFAULT_WAIT_TIMEOUT_MS = 300000;
 const WAIT_POLL_INTERVAL_MS = 100;
-const TERMINAL_JOB_STATUSES = new Set(["completed", "failed", "cancelled"]);
+const TERMINAL_JOB_STATUSES = new Set(["completed", "failed", "cancelled", "permission_blocked"]);
 const RESUMABLE_JOB_STATUSES = new Set(["completed", "failed"]);
 const STOP_REVIEW_ENABLE_FILE = path.join(".codex", "claude-stop-review.enabled");
 const BLOCKING_SEVERITIES = new Set(["critical", "high"]);
@@ -66,6 +66,27 @@ const DESTRUCTIVE_COMMAND_PATTERN =
   /\b(rm\s+-|git\s+clean\b|git\s+reset\s+--hard\b|npm\s+publish\b|pnpm\s+publish\b|yarn\s+npm\s+publish\b|deploy\b|kubectl\b|docker\s+push\b|aws\b|gcloud\b|scp\b|ssh\b|curl\b|wget\b)\b/i;
 const READ_ONLY_COMMAND_PATTERN =
   /^(npm|pnpm|yarn|bun)\s+(run\s+)?(test|lint|typecheck|check|format)(\b|:)|^(git\s+(status|diff|log|show)|ls\b|pwd\b|cat\b|sed\b|rg\b|grep\b|find\b)/i;
+const PERMISSION_BLOCKED_PATTERN =
+  /\b(this command requires approval|command requires approval|requires approval|approval required|requires permission|permission required|user needs to approve|needs approval)\b/i;
+const COMMAND_TO_RUN_PATTERN =
+  /command to run is:\s*(?:```(?:\w+)?\s*)?([^\r\n`][^\r\n`]*)/i;
+const FENCED_COMMAND_PATTERN = /```(?:bash|sh|shell|zsh|text)?\s*\n([^`\r\n][^`]*)```/i;
+const TRUSTED_LOCAL_DEV_ALLOWED_TOOLS = [
+  "Read",
+  "Edit",
+  "Write",
+  "Glob",
+  "Grep",
+  "LS",
+  "Bash(git status*)",
+  "Bash(git diff*)",
+  "Bash(python -m unittest*)",
+  "Bash(python3 -m unittest*)",
+  "Bash(node --test*)",
+  "Bash(npm test*)",
+  "Bash(pnpm test*)",
+  "Bash(yarn test*)"
+];
 const PLAN_PROMPT_PREFIX = [
   "You are Claude Code acting as a planning, architecture, and systems-design partner for Codex.",
   "Produce a concrete plan, tradeoffs, risks, sequencing, validation approach, and open questions.",
@@ -108,7 +129,10 @@ function parseArgs(argv) {
     waitTimeoutMs: DEFAULT_WAIT_TIMEOUT_MS,
     bare: false,
     adversarial: false,
-    maxDiffBytes: DEFAULT_REVIEW_MAX_DIFF_BYTES
+    maxDiffBytes: DEFAULT_REVIEW_MAX_DIFF_BYTES,
+    allowedTools: [],
+    allowedToolsFile: null,
+    trustLocalDev: false
   };
   let command = null;
   const rest = [];
@@ -230,6 +254,20 @@ function parseArgs(argv) {
       options.bare = true;
       continue;
     }
+    if (arg === "--allow-tool" || arg === "--allowed-tool" || arg === "--allowedTools" || arg === "--allowed-tools") {
+      options.allowedTools.push(...splitAllowedToolsValue(readOptionValue(argv, index, arg)));
+      index += 1;
+      continue;
+    }
+    if (arg === "--allowed-tools-file") {
+      options.allowedToolsFile = readOptionValue(argv, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === "--trust-local-dev") {
+      options.trustLocalDev = true;
+      continue;
+    }
     if (arg === "--adversarial") {
       options.adversarial = true;
       continue;
@@ -242,6 +280,13 @@ function parseArgs(argv) {
   }
 
   return { command, options, rest };
+}
+
+function splitAllowedToolsValue(value) {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function readOptionValue(argv, index, optionName) {
@@ -292,6 +337,10 @@ function usage() {
     "  --resume                Continue the latest resumable rescue session in this workspace.",
     "  --fresh                 Explicitly start a new rescue session.",
     "  --bare                  Use Claude bare mode for API-key/helper/provider auth.",
+    "  --allow-tool <pattern>  Allow one Claude tool pattern without prompting. Repeatable.",
+    "  --allowed-tools-file <path>",
+    "                          Read allowed tool patterns from a JSON array or newline file.",
+    "  --trust-local-dev       Add a curated local test/edit allowlist for trusted repos.",
     "",
     "Plan/UI options:",
     "  plan always uses read-only plan permission mode.",
@@ -593,7 +642,38 @@ async function resolveCwd(rawCwd) {
   return cwd;
 }
 
-function buildRescueArgs({ bare, model, effort, permissionMode, sessionId }) {
+async function resolveAllowedTools(options) {
+  const allowedTools = [];
+  if (options.trustLocalDev) {
+    allowedTools.push(...TRUSTED_LOCAL_DEV_ALLOWED_TOOLS);
+  }
+  allowedTools.push(...options.allowedTools);
+  if (options.allowedToolsFile) {
+    allowedTools.push(...(await readAllowedToolsFile(options.allowedToolsFile)));
+  }
+  return [...new Set(allowedTools.map((tool) => tool.trim()).filter(Boolean))];
+}
+
+async function readAllowedToolsFile(filePath) {
+  const raw = await readFile(path.resolve(filePath), "utf8");
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return [];
+  }
+  if (trimmed.startsWith("[")) {
+    const parsed = JSON.parse(trimmed);
+    if (!Array.isArray(parsed) || !parsed.every((item) => typeof item === "string")) {
+      throw new Error(`Allowed tools file must contain a JSON string array: ${filePath}`);
+    }
+    return parsed;
+  }
+  return raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"));
+}
+
+function buildRescueArgs({ bare, model, effort, permissionMode, sessionId, allowedTools }) {
   return [
     ...(bare ? ["--bare"] : []),
     "-p",
@@ -610,7 +690,8 @@ function buildRescueArgs({ bare, model, effort, permissionMode, sessionId }) {
     model,
     ...(effort ? ["--effort", effort] : []),
     "--permission-mode",
-    permissionMode
+    permissionMode,
+    ...(allowedTools.length > 0 ? ["--allowedTools", ...allowedTools] : [])
   ];
 }
 
@@ -622,10 +703,11 @@ function runClaudeRescue({
   effort,
   permissionMode,
   sessionId,
+  allowedTools = [],
   onChildPid,
   detached = false
 }) {
-  const args = buildRescueArgs({ bare, model, effort, permissionMode, sessionId });
+  const args = buildRescueArgs({ bare, model, effort, permissionMode, sessionId, allowedTools });
   return new Promise((resolve) => {
     const stdoutChunks = [];
     const stderrChunks = [];
@@ -719,6 +801,7 @@ async function runRescue(options) {
   const model = normalizeModel(options.model);
   const effort = normalizeEffort(options.effort);
   const permissionMode = resolvePermissionMode(options);
+  const allowedTools = await resolveAllowedTools(options);
   const cwd = await resolveCwd(options.cwd);
   const session = await resolveRescueSession(options, cwd);
   const sessionId = session.sessionId;
@@ -730,6 +813,7 @@ async function runRescue(options) {
       model,
       effort,
       permissionMode,
+      allowedTools,
       session
     });
     if (!options.wait) {
@@ -749,19 +833,24 @@ async function runRescue(options) {
     model,
     effort,
     permissionMode,
+    allowedTools,
     sessionId
   });
   const stream = parseClaudeStream(invocation.stdout);
   const resultText = stream.finalText || stream.text.join("").trim();
+  const permissionBlock = detectPermissionBlock(resultText, stream);
+  const status = determineRescueStatus({ invocation, resultText, permissionBlock });
 
   return {
-    ok: invocation.ok && resultText.length > 0,
-    status: invocation.ok ? (resultText.length > 0 ? "completed" : "no_result") : invocation.status,
+    ok: status === "completed",
+    status,
     kind: "rescue",
     cwd,
     model,
     effort,
     permissionMode,
+    allowedTools,
+    trustedLocalDev: options.trustLocalDev,
     isolation: options.bare ? "bare" : "standard",
     sessionId,
     sessionMode: session.mode,
@@ -771,7 +860,8 @@ async function runRescue(options) {
     signal: invocation.signal,
     result: resultText,
     stderr: invocation.stderr,
-    stream
+    stream,
+    ...(permissionBlock ? { permissionBlock } : {})
   };
 }
 
@@ -1015,6 +1105,69 @@ function normalizeContent(content) {
   return "";
 }
 
+function determineRescueStatus({ invocation, resultText, permissionBlock }) {
+  if (permissionBlock) {
+    return "permission_blocked";
+  }
+  if (!invocation.ok) {
+    return invocation.status;
+  }
+  return resultText.length > 0 ? "completed" : "no_result";
+}
+
+function detectPermissionBlock(resultText, stream) {
+  const combined = [
+    resultText,
+    stream.finalText,
+    ...(Array.isArray(stream.text) ? stream.text : []),
+    ...(Array.isArray(stream.malformedLines) ? stream.malformedLines : [])
+  ]
+    .filter(Boolean)
+    .join("\n");
+  if (!PERMISSION_BLOCKED_PATTERN.test(combined)) {
+    return null;
+  }
+  const blockedTool = extractBlockedTool(combined);
+  return {
+    reason: "Claude Code requested tool approval during a noninteractive plugin run.",
+    ...(blockedTool ? { blockedTool } : {}),
+    guidance: buildPermissionBlockedGuidance(blockedTool)
+  };
+}
+
+function extractBlockedTool(text) {
+  const toolMatch = text.match(TOOL_PATTERN);
+  if (toolMatch?.[0]) {
+    return toolMatch[0];
+  }
+  const commandMatch = text.match(COMMAND_TO_RUN_PATTERN);
+  if (commandMatch?.[1]) {
+    return formatBashAllowedTool(commandMatch[1]);
+  }
+  const fencedMatch = text.match(FENCED_COMMAND_PATTERN);
+  if (fencedMatch?.[1]) {
+    return formatBashAllowedTool(firstLine(fencedMatch[1]));
+  }
+  return "";
+}
+
+function formatBashAllowedTool(command) {
+  const normalized = command.trim().replace(/\s+/g, " ");
+  return normalized ? `Bash(${normalized})` : "";
+}
+
+function buildPermissionBlockedGuidance(blockedTool) {
+  const guidance = [
+    "Rerun with `--trust-local-dev` in a trusted local repository for common edit/test commands.",
+    "Or rerun with a narrow `--allow-tool <pattern>` for the blocked command.",
+    "Avoid `--danger` unless the workspace is isolated and you explicitly want bypassPermissions."
+  ];
+  if (blockedTool) {
+    guidance.splice(1, 0, `Suggested narrow pattern: --allow-tool ${JSON.stringify(blockedTool)}`);
+  }
+  return guidance;
+}
+
 function renderHumanRescue(result) {
   const lines = [];
   if (result.wait) {
@@ -1053,6 +1206,10 @@ function renderHumanRescue(result) {
     lines.push(`Resumed from job: ${result.resumedFromJobId}`);
   }
   lines.push("");
+  if (result.permissionBlock) {
+    lines.push(formatPermissionBlockedResult(result.result, result.permissionBlock).trimEnd());
+    return lines.join("\n");
+  }
   if (result.result) {
     lines.push(result.result);
   } else {
@@ -1084,6 +1241,12 @@ function renderHumanStatus(result) {
     }
     if (job.modelUsage) {
       lines.push(`  Model usage: ${formatModelUsage(job.modelUsage)}`);
+    }
+    if (job.permissionBlock) {
+      lines.push(`  Permission block: ${summarizePermissionBlock(job.permissionBlock)}`);
+      if (job.permissionBlock.blockedTool) {
+        lines.push(`  Allow: --allow-tool ${JSON.stringify(job.permissionBlock.blockedTool)}`);
+      }
     }
     lines.push(`  Updated: ${job.updatedAt || "unknown"}`);
     lines.push(`  Result: ${job.nextCommands.result}`);
@@ -1119,6 +1282,12 @@ function renderHumanResult(result) {
   }
   if (result.job.modelUsage) {
     lines.push(`Model usage: ${formatModelUsage(result.job.modelUsage)}`);
+  }
+  if (result.job.permissionBlock) {
+    lines.push(`Permission block: ${summarizePermissionBlock(result.job.permissionBlock)}`);
+    if (result.job.permissionBlock.blockedTool) {
+      lines.push(`Allow command: --allow-tool ${JSON.stringify(result.job.permissionBlock.blockedTool)}`);
+    }
   }
   lines.push(`Result command: ${result.job.nextCommands.result}`);
   if (result.job.nextCommands.cancel) {
@@ -1264,7 +1433,7 @@ function summarizeResult(result) {
   return result.trim().replace(/\s+/g, " ").slice(0, 160);
 }
 
-async function startBackgroundRescue({ options, cwd, model, effort, permissionMode, session }) {
+async function startBackgroundRescue({ options, cwd, model, effort, permissionMode, allowedTools, session }) {
   const stateDir = resolveStateDir(options.stateDir);
   await ensureStateDir(stateDir);
   const jobId = `rescue-${Date.now()}-${randomUUID().slice(0, 8)}`;
@@ -1284,6 +1453,8 @@ async function startBackgroundRescue({ options, cwd, model, effort, permissionMo
     model,
     effort,
     permissionMode,
+    allowedTools,
+    trustedLocalDev: options.trustLocalDev,
     isolation: options.bare ? "bare" : "standard",
     logPath: paths.logPath,
     stderrPath: paths.stderrPath,
@@ -1384,6 +1555,7 @@ async function runRescueJob(options) {
     model: job.model,
     effort: job.effort,
     permissionMode: job.permissionMode,
+    allowedTools: job.allowedTools || [],
     sessionId: job.claudeSessionId,
     detached: true,
     onChildPid: (childPid) => {
@@ -1392,22 +1564,29 @@ async function runRescueJob(options) {
   });
   const stream = parseClaudeStream(invocation.stdout);
   const resultText = stream.finalText || stream.text.join("").trim();
+  const permissionBlock = detectPermissionBlock(resultText, stream);
   const latestJob = await findJob(stateDir, job.id);
   const cancelled = latestJob?.status === "cancelling" || latestJob?.status === "cancelled";
   const status =
     cancelled || invocation.signal
       ? "cancelled"
+      : permissionBlock
+        ? "permission_blocked"
       : invocation.ok && resultText.length > 0
         ? "completed"
         : "failed";
   const summary =
     status === "cancelled"
       ? "Cancelled by user"
+      : status === "permission_blocked"
+        ? summarizePermissionBlock(permissionBlock)
       : resultText
         ? summarizeResult(resultText)
         : firstLine(invocation.stderr);
   const persistedResult =
-    resultText || (status === "failed" ? formatRescueFailure(invocation, stream) : "");
+    status === "permission_blocked"
+      ? formatPermissionBlockedResult(resultText, permissionBlock)
+      : resultText || (status === "failed" ? formatRescueFailure(invocation, stream) : "");
 
   await writeFile(job.logPath, invocation.stdout, "utf8");
   await writeFile(job.stderrPath, invocation.stderr, "utf8");
@@ -1431,7 +1610,8 @@ async function runRescueJob(options) {
     exitCode: invocation.exitCode,
     signal: invocation.signal,
     summary,
-    ...(stream.modelUsage ? { modelUsage: stream.modelUsage } : {})
+    ...(stream.modelUsage ? { modelUsage: stream.modelUsage } : {}),
+    ...(permissionBlock ? { permissionBlock } : {})
   });
 }
 
@@ -1452,6 +1632,32 @@ function formatRescueFailure(invocation, stream) {
   }
   if (invocation.stderr.trim()) {
     lines.push("", "Claude stderr:", invocation.stderr.trim());
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function summarizePermissionBlock(permissionBlock) {
+  if (permissionBlock?.blockedTool) {
+    return `Claude requested approval for ${permissionBlock.blockedTool}`;
+  }
+  return "Claude requested tool approval";
+}
+
+function formatPermissionBlockedResult(resultText, permissionBlock) {
+  const lines = [
+    "Claude stopped because it requested tool approval during a noninteractive plugin run."
+  ];
+  if (permissionBlock?.blockedTool) {
+    lines.push("", `Blocked tool: ${permissionBlock.blockedTool}`);
+  }
+  if (permissionBlock?.guidance?.length > 0) {
+    lines.push("", "Next options:");
+    for (const item of permissionBlock.guidance) {
+      lines.push(`- ${item}`);
+    }
+  }
+  if (resultText) {
+    lines.push("", "Claude output before the block:", resultText.trimEnd());
   }
   return `${lines.join("\n")}\n`;
 }

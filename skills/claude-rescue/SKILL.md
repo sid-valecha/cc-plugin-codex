@@ -63,6 +63,9 @@ Useful options:
 - `--permission-mode auto` to use Claude Code's automatic permission classifier.
 - `--danger` to use `bypassPermissions` only when the user explicitly accepts that risk.
 - `--permission-mode <mode>` for an explicit Claude Code permission mode.
+- `--trust-local-dev` for trusted local repositories where Claude should be allowed to edit/search and run common local test commands without a nested Claude approval stop.
+- `--allow-tool <pattern>` to pass a narrow Claude Code allowed tool pattern such as `Bash(python3 -m unittest*)`. Repeat it for multiple patterns.
+- `--allowed-tools-file <path>` to read approved tool patterns from a JSON array or newline file.
 - `--session-id <uuid>` when continuing a known Claude session.
 - `--resume` to continue the latest completed or failed rescue session for the same resolved workspace.
 - `--fresh` to explicitly force a new Claude session, which is also the default behavior.
@@ -76,5 +79,11 @@ Model guidance:
 - Use `--model opus` for serious rescue work, hard debugging, important edits, or decisions that need high confidence.
 - Use `--effort low` for smoke tests, cheap sanity checks, or explicitly low-effort requests.
 - Do not assume short aliases always map to the expected backend model. After real Claude calls, inspect and report actual model usage from JSON output when available.
+
+Permission guidance:
+
+- Codex approval only starts the plugin command; Claude Code can still request approval for its own tools inside the run.
+- If the result status is `permission_blocked`, tell the user which tool was blocked and suggest either a narrow `--allow-tool` pattern or `--trust-local-dev` for trusted local repositories.
+- Do not use `--danger` as the default fix for permission blocks.
 
 Use `claude-status`, `claude-result`, and `claude-cancel` for managed background jobs.
