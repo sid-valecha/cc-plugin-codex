@@ -7,6 +7,8 @@ description: Ask Claude Code for frontend UI/design implementation, critique, vi
 
 Use this skill when the user wants Claude Code's help building or polishing frontend UI, landing pages, product flows, responsive layout, accessibility, or visual design details.
 
+Real UI/design calls can send prompts and workspace context to Claude Code and may spend quota. If the Codex host offers persistent approvals, ask the user to approve the narrow prefixes `node scripts/claude-companion.mjs ui` and `node scripts/claude-companion.mjs design` instead of broad commands like `node`. If host policy blocks external disclosure, do not bypass it.
+
 Run a write-capable UI/design task:
 
 ```bash

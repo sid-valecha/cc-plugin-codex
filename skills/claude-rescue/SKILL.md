@@ -15,6 +15,8 @@ node scripts/claude-companion.mjs setup
 
 If setup reports unauthenticated even though `claude auth status --text` works in the user's normal terminal, the current agent sandbox may not be able to read Claude's OAuth/keychain session. Ask the user to approve the Claude-invoking command outside the sandbox, or use bare-compatible auth such as `claude setup-token`, `ANTHROPIC_API_KEY`, provider credentials, or `apiKeyHelper`.
 
+Real rescue calls can send prompts and workspace context to Claude Code and may spend quota. If the Codex host offers persistent approvals, ask the user to approve the narrow prefix `node scripts/claude-companion.mjs rescue` instead of broad commands like `node`. If host policy blocks external disclosure, do not bypass it.
+
 Run a foreground rescue task:
 
 ```bash

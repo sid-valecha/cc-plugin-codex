@@ -7,6 +7,8 @@ description: Run a stricter structured read-only Claude Code review that searche
 
 Use this skill when the user wants a stricter read-only review of code changes.
 
+Real adversarial review calls send diffs and review prompts to Claude Code and may spend quota. If the Codex host offers persistent approvals, ask the user to approve the narrow prefix `node scripts/claude-companion.mjs adversarial-review` instead of broad commands like `node`. If host policy blocks external disclosure, do not bypass it.
+
 Review uncommitted changes:
 
 ```bash

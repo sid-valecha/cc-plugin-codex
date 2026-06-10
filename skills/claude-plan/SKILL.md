@@ -7,6 +7,8 @@ description: Ask Claude Code for read-only planning, architecture, systems-desig
 
 Use this skill when the user wants Claude Code's help planning a complex change, evaluating architecture tradeoffs, designing a migration, or building a debugging strategy.
 
+Real planning calls can send prompts and workspace context to Claude Code and may spend quota. If the Codex host offers persistent approvals, ask the user to approve the narrow prefix `node scripts/claude-companion.mjs plan` instead of broad commands like `node`. If host policy blocks external disclosure, do not bypass it.
+
 Run:
 
 ```bash
