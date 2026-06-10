@@ -355,6 +355,8 @@ Estimated effort: 1-2 days.
 
 Stabilize and validate the plugin for normal use.
 
+Detailed validation order is tracked in `context/next-roadmap.md`.
+
 Deliverables:
 
 - full test run
@@ -381,6 +383,14 @@ Exit criteria:
 - The repo can be handed to another user or agent with clear install and development instructions.
 
 Estimated effort: 1 day.
+
+### Post-Milestone 5 Product Layer
+
+Next product-layer ideas are tracked in `context/next-roadmap.md`:
+
+- `claude-plan` for explicit read-only planning, architecture, system design, and debugging strategy.
+- `claude-ui` or `claude-design` for explicit frontend design and UI polish work.
+- explicit Claude Code skill/plugin bridging using Claude CLI options such as `--plugin-dir`, `--agent`, and skill-name prompting after feasibility testing.
 
 ## Worktree Strategy
 
