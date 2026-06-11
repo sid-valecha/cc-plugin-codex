@@ -91,6 +91,13 @@ test("setup reports ready when fake Claude is installed and authenticated", asyn
 
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.ok, true);
+  assert.ok(payload.firstRunApproval);
+  assert.equal(payload.firstRunApproval.profile.path, "~/.codex/claude-companion.config.toml");
+  assert.match(payload.firstRunApproval.profile.contents, /approvals_reviewer = "user"/);
+  assert.equal(payload.firstRunApproval.profile.launchCommand, "codex --profile claude-companion");
+  assert.ok(
+    payload.firstRunApproval.commandPrefixes.includes("node scripts/claude-companion.mjs rescue")
+  );
   assert.deepEqual(
     payload.checks.map((check) => [check.name, check.ok, check.status]),
     [
@@ -190,5 +197,9 @@ test("setup emits human-readable diagnostics", async () => {
   assert.equal(result.exitCode, 0);
   assert.match(result.stdout, /Claude Code setup diagnostics/);
   assert.match(result.stdout, /\[OK\] node --version: v99\.0\.0/);
+  assert.match(result.stdout, /First-run Claude approval:/);
+  assert.match(result.stdout, /approvals_reviewer = "user"/);
+  assert.match(result.stdout, /codex --profile claude-companion/);
+  assert.match(result.stdout, /node scripts\/claude-companion\.mjs rescue/);
   assert.match(result.stdout, /Setup looks ready\./);
 });
