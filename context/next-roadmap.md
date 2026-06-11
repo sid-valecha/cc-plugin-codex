@@ -4,6 +4,9 @@
 
 Run release-candidate validation in this order:
 
+Detailed commands and pass/fail criteria are tracked in
+`context/release-checklist.md`.
+
 1. Deterministic validation:
    - `npm test`
    - `node --check scripts/claude-companion.mjs`

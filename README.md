@@ -283,7 +283,7 @@ node scripts/claude-companion.mjs review --effort low --model sonnet --json
 
 Use `--model opus` only for serious validation when the cost and quota impact are acceptable.
 
-The recommended release-candidate validation order and the next product-layer ideas are tracked in `context/next-roadmap.md`.
+The recommended release-candidate validation order and the next product-layer ideas are tracked in `context/next-roadmap.md`. Exact release validation commands and pass/fail criteria are tracked in `context/release-checklist.md`.
 
 ## Host Permissions
 
