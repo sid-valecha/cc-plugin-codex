@@ -238,3 +238,24 @@ Release candidate is ready when:
 
 Record completed validation in `context/next-roadmap.md` under
 `RC Validation Log`.
+
+## 9. Version And Tags
+
+Keep the checked-in package and plugin manifest version at `0.1.0` for this
+release-candidate line.
+
+After serious Opus validation passes and actual `modelUsage` is recorded:
+
+```bash
+git tag v0.1.0-rc.1
+git push origin v0.1.0-rc.1
+```
+
+After RC testing stays clean and the release is promoted:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Do not create release tags before the Opus validation result is logged.

@@ -80,3 +80,12 @@ Current completed checks include:
 - Record actual `modelUsage` in `context/next-roadmap.md`.
 - Fix or log any release blockers from that pass before tagging or sharing the
   release candidate.
+
+### Version And Tag Policy
+
+- Keep `package.json` and `.codex-plugin/plugin.json` at `0.1.0` for this
+  release-candidate line.
+- After the serious Opus validation passes, create tag `v0.1.0-rc.1`.
+- If RC testing stays clean, create the final stable tag `v0.1.0`.
+- Do not create either tag before the Opus validation result and actual
+  `modelUsage` are recorded.
