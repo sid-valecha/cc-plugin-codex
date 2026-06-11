@@ -67,6 +67,29 @@ Run release-candidate validation in this order:
   - Claude returned one critical finding on `calculator.py:17`, correctly
     identifying the broken division-by-zero guard.
   - Actual model usage reported `claude-sonnet-4-6`.
+- 2026-06-10: Deterministic RC validation passed on `main`.
+  - `npm test` passed with 53 tests.
+  - `node --check scripts/claude-companion.mjs` passed.
+  - Plugin validation passed for both the repository checkout and installed
+    cache copy using the `cc-plugin-codex-validate` conda environment.
+- 2026-06-10: Non-billable installed-cache runtime checks passed.
+  - `setup --json` saw Node v26.3.0, npm 11.16.0, Claude Code 2.1.153,
+    and authenticated Claude Pro account status outside the sandbox.
+  - `setup --json` emitted first-run approval guidance for the
+    `claude-companion` Codex profile and narrow plugin command prefixes.
+  - `status --limit 5` rendered rich completed-job metadata, including
+    session id, model/effort/permission/isolation, exit code, model usage, and
+    next result command.
+- 2026-06-10: Direct plugin-cache background `rescue --wait` smoke passed
+  against the calculator fixture.
+  - Command used `rescue --background --wait --wait-timeout-ms 120000
+    --permission-mode plan --effort low --model sonnet --json`.
+  - The run completed with job id `rescue-1781137629537-c364c0f9`, session id
+    `2d0ff4c8-de33-4d19-9f83-d3fdb62097f2`, and result `OK`.
+  - Human `result` and `status` output included session id, model, effort,
+    permission mode, isolation, exit code, actual model usage, and next
+    commands.
+  - Actual model usage reported `claude-sonnet-4-6`.
 
 ## Post-Milestone 5 Product Layer
 
