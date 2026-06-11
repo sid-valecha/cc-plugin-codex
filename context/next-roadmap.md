@@ -110,6 +110,24 @@ Detailed commands and pass/fail criteria are tracked in
     the sandbox.
   - Installed-cache `status --limit 5` rendered existing completed jobs with
     session ids, model usage, and next result commands.
+- 2026-06-11: Team marketplace dry run passed without real Claude calls.
+  - Prepared a temp marketplace root under
+    `/private/tmp/cc-plugin-codex-team-marketplace-smoke.*` from
+    `templates/team-marketplace/`.
+  - Copied the plugin into `plugins/cc-plugin-codex` with Git metadata
+    excluded.
+  - Temp marketplace `marketplace.json` parsed successfully.
+  - Copied plugin validation passed using the `cc-plugin-codex-validate` conda
+    environment.
+  - `codex plugin marketplace add <temp-root>` registered marketplace
+    `team-codex`.
+  - `codex plugin add cc-plugin-codex@team-codex` installed the plugin into
+    `/Users/sidvalecha/.codex/plugins/cache/team-codex/cc-plugin-codex/0.1.0`.
+  - Team-cache plugin validation and `node --check` passed.
+  - Team-cache `setup --json` and `status --limit 2` passed.
+  - Removed the temporary `cc-plugin-codex@team-codex` install and
+    `team-codex` marketplace registration after the dry run; the personal
+    marketplace install remained enabled.
 
 ## Post-Milestone 5 Product Layer
 
