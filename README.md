@@ -25,6 +25,8 @@ The setup check is non-billable. It only runs:
 - `claude --version`
 - `claude auth status --text`
 
+Setup output also prints first-run Codex approval guidance, including the optional `claude-companion` profile and narrow plugin command prefixes to approve for live Claude calls.
+
 If Claude Code is missing, install it with:
 
 ```bash

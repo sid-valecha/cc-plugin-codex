@@ -33,6 +33,23 @@ const AUTH_PROBE_TIMEOUT_GUIDANCE = [
   "`claude auth status --text` timed out; check whether Claude Code is hanging or waiting for interactive input."
 ];
 
+const FIRST_RUN_APPROVAL_GUIDANCE = [
+  "Live Claude calls also need Codex host approval because prompts, diffs, or workspace context can be sent to Claude Code.",
+  "For unmanaged local Codex installs, create `~/.codex/claude-companion.config.toml` with approval_policy=\"on-request\", approvals_reviewer=\"user\", and sandbox_mode=\"workspace-write\".",
+  "Start Codex with `codex --profile claude-companion`, then approve the narrow plugin command prefix when Codex asks.",
+  "If managed policy forces automatic review and denies external Claude disclosure, an admin or workspace policy must allow the narrow plugin delegation prefixes."
+];
+
+const FIRST_RUN_PROFILE = {
+  path: "~/.codex/claude-companion.config.toml",
+  contents: [
+    'approval_policy = "on-request"',
+    'approvals_reviewer = "user"',
+    'sandbox_mode = "workspace-write"'
+  ].join("\n"),
+  launchCommand: "codex --profile claude-companion"
+};
+
 const DEFAULT_RESCUE_MODEL = "sonnet";
 const MODEL_ALIASES = new Map([["spark", "haiku"]]);
 const DEFAULT_PERMISSION_MODE = "acceptEdits";
@@ -548,10 +565,25 @@ async function runSetup() {
   const result = {
     ok: checks.every((check) => check.ok),
     checks,
-    guidance: collectGuidance(checks)
+    guidance: collectGuidance(checks),
+    firstRunApproval: {
+      guidance: FIRST_RUN_APPROVAL_GUIDANCE,
+      profile: FIRST_RUN_PROFILE,
+      commandPrefixes: buildRecommendedPluginPrefixes()
+    }
   };
 
   return result;
+}
+
+function buildRecommendedPluginPrefixes() {
+  return [
+    "node scripts/claude-companion.mjs rescue",
+    "node scripts/claude-companion.mjs plan",
+    "node scripts/claude-companion.mjs ui",
+    "node scripts/claude-companion.mjs design",
+    "node scripts/claude-companion.mjs review"
+  ];
 }
 
 function collectGuidance(checks) {
@@ -582,6 +614,26 @@ function renderHumanSetup(result) {
     lines.push("", "Guidance:");
     for (const item of result.guidance) {
       lines.push(`- ${item}`);
+    }
+  }
+
+  if (result.firstRunApproval) {
+    lines.push("", "First-run Claude approval:");
+    for (const item of result.firstRunApproval.guidance) {
+      lines.push(`- ${item}`);
+    }
+    lines.push(
+      "",
+      `Optional profile: ${result.firstRunApproval.profile.path}`,
+      "```toml",
+      result.firstRunApproval.profile.contents,
+      "```",
+      `Launch with: ${result.firstRunApproval.profile.launchCommand}`,
+      "",
+      "Approve narrow plugin prefixes when prompted:"
+    );
+    for (const prefix of result.firstRunApproval.commandPrefixes) {
+      lines.push(`- ${prefix}`);
     }
   }
 
