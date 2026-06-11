@@ -129,7 +129,7 @@ On the first real Claude call from `codex --profile claude-companion`, approve
 the narrow plugin command that Codex shows, such as:
 
 ```text
-node /Users/<user>/.codex/plugins/cache/personal/cc-plugin-codex/0.1.0/scripts/claude-companion.mjs rescue
+node <codex-plugin-cache>/cc-plugin-codex/0.1.0/scripts/claude-companion.mjs rescue
 ```
 
 After that, normal trusted-local development tasks can use `claude-rescue` with trusted local dev mode. If an organization forces automatic approval review and denies external Claude disclosure, the plugin cannot bypass that policy; a user or admin must allow the narrow Claude delegation prefixes for live Claude calls.
@@ -300,7 +300,7 @@ codex plugin add cc-plugin-codex@personal
 If your personal marketplace has a different top-level `name`, read it with:
 
 ```bash
-python3 /Users/sidvalecha/.codex/skills/.system/plugin-creator/scripts/read_marketplace_name.py
+python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/plugin-creator/scripts/read_marketplace_name.py"
 ```
 
 Then substitute the printed marketplace name:
@@ -312,7 +312,7 @@ codex plugin add cc-plugin-codex@<marketplace-name>
 When iterating on an already-installed local plugin, update the manifest cachebuster instead of hand-editing marketplace files:
 
 ```bash
-python3 /Users/sidvalecha/.codex/skills/.system/plugin-creator/scripts/update_plugin_cachebuster.py .
+python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/plugin-creator/scripts/update_plugin_cachebuster.py" .
 codex plugin add cc-plugin-codex@<marketplace-name>
 ```
 
@@ -329,11 +329,13 @@ npm test
 node --check scripts/claude-companion.mjs
 ```
 
-Plugin validation needs Python with PyYAML. A dedicated conda environment keeps that dependency out of the system Python:
+Plugin validation needs Python with PyYAML. Use any Python environment that has
+PyYAML installed. If you want an isolated conda environment:
 
 ```bash
-conda create -y -n cc-plugin-codex-validate python=3.14 pyyaml
-conda run -n cc-plugin-codex-validate python /Users/sidvalecha/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py .
+conda create -y -n codex-plugin-validate python=3.14 pyyaml
+conda activate codex-plugin-validate
+python "${CODEX_HOME:-$HOME/.codex}/skills/.system/plugin-creator/scripts/validate_plugin.py" .
 ```
 
 Manual non-billable checks:
@@ -525,7 +527,7 @@ npm test
 Plugin validation can be run with the local plugin-creator validator:
 
 ```bash
-python3 /Users/sidvalecha/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py .
+python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/plugin-creator/scripts/validate_plugin.py" .
 ```
 
 Tests use a fake `claude` executable placed first on `PATH`, so they do not require a local Claude install and do not make billable calls.

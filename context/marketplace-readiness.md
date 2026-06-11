@@ -65,7 +65,7 @@ codex plugin add cc-plugin-codex@personal
 If the personal marketplace has a different top-level name, read it first:
 
 ```bash
-python3 /Users/sidvalecha/.codex/skills/.system/plugin-creator/scripts/read_marketplace_name.py
+python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/plugin-creator/scripts/read_marketplace_name.py"
 ```
 
 Then reinstall with:
@@ -78,7 +78,7 @@ When iterating on the same local install, update the manifest cachebuster before
 reinstalling:
 
 ```bash
-python3 /Users/sidvalecha/.codex/skills/.system/plugin-creator/scripts/update_plugin_cachebuster.py .
+python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/plugin-creator/scripts/update_plugin_cachebuster.py" .
 codex plugin add cc-plugin-codex@<marketplace-name>
 ```
 
@@ -181,7 +181,7 @@ These checks do not send prompts to Claude:
 ```bash
 npm test
 node --check scripts/claude-companion.mjs
-conda run -n cc-plugin-codex-validate python /Users/sidvalecha/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py .
+python "${CODEX_HOME:-$HOME/.codex}/skills/.system/plugin-creator/scripts/validate_plugin.py" .
 node scripts/claude-companion.mjs setup --json
 node scripts/claude-companion.mjs status --limit 5
 ```

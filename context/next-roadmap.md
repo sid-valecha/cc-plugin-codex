@@ -10,7 +10,7 @@ Detailed commands and pass/fail criteria are tracked in
 1. Deterministic validation:
    - `npm test`
    - `node --check scripts/claude-companion.mjs`
-   - `conda run -n cc-plugin-codex-validate python /Users/sidvalecha/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py .`
+   - `python "${CODEX_HOME:-$HOME/.codex}/skills/.system/plugin-creator/scripts/validate_plugin.py" .`
    - validate the installed cache copy if the plugin has been reinstalled locally
 2. Fresh local install/update smoke:
    - `codex plugin list`
@@ -64,8 +64,7 @@ Detailed commands and pass/fail criteria are tracked in
   throwaway git fixture at
   `/private/tmp/cc-plugin-codex-review-smoke.7Tp7Ah`.
   - Seeded diff changed `divide()` from `b == 0` to `b == "0"`.
-  - `conda run -n cc-plugin-codex-validate python -m unittest -v` failed as
-    expected before review.
+  - `python -m unittest -v` failed as expected before review.
   - Command used `review --effort low --model sonnet --json`.
   - Claude returned one critical finding on `calculator.py:17`, correctly
     identifying the broken division-by-zero guard.
@@ -74,7 +73,7 @@ Detailed commands and pass/fail criteria are tracked in
   - `npm test` passed with 53 tests.
   - `node --check scripts/claude-companion.mjs` passed.
   - Plugin validation passed for both the repository checkout and installed
-    cache copy using the `cc-plugin-codex-validate` conda environment.
+    cache copy using Python with PyYAML installed.
 - 2026-06-10: Non-billable installed-cache runtime checks passed.
   - `setup --json` saw Node v26.3.0, npm 11.16.0, Claude Code 2.1.153,
     and authenticated Claude Pro account status outside the sandbox.
@@ -95,11 +94,10 @@ Detailed commands and pass/fail criteria are tracked in
   - Actual model usage reported `claude-sonnet-4-6`.
 - 2026-06-11: Fresh-user install simulation passed without real Claude calls.
   - `codex plugin list` showed `cc-plugin-codex@personal` installed and
-    enabled from `/Users/sidvalecha/plugins/cc-plugin-codex`.
+    enabled from the local personal marketplace checkout.
   - `codex plugin add cc-plugin-codex@personal` reinstalled the plugin into
-    `/Users/sidvalecha/.codex/plugins/cache/personal/cc-plugin-codex/0.1.0`.
-  - Installed-cache plugin validation passed using the
-    `cc-plugin-codex-validate` conda environment.
+    the personal Codex plugin cache.
+  - Installed-cache plugin validation passed using Python with PyYAML installed.
   - Installed-cache `scripts/claude-companion.mjs` passed `node --check`.
   - Installed-cache skills included setup, rescue, plan, UI, review,
     adversarial-review, permissions, status, result, cancel, and Stop hook.
@@ -117,12 +115,11 @@ Detailed commands and pass/fail criteria are tracked in
   - Copied the plugin into `plugins/cc-plugin-codex` with Git metadata
     excluded.
   - Temp marketplace `marketplace.json` parsed successfully.
-  - Copied plugin validation passed using the `cc-plugin-codex-validate` conda
-    environment.
+  - Copied plugin validation passed using Python with PyYAML installed.
   - `codex plugin marketplace add <temp-root>` registered marketplace
     `team-codex`.
   - `codex plugin add cc-plugin-codex@team-codex` installed the plugin into
-    `/Users/sidvalecha/.codex/plugins/cache/team-codex/cc-plugin-codex/0.1.0`.
+    the team marketplace Codex plugin cache.
   - Team-cache plugin validation and `node --check` passed.
   - Team-cache `setup --json` and `status --limit 2` passed.
   - Removed the temporary `cc-plugin-codex@team-codex` install and

@@ -36,13 +36,15 @@ Validation:
 ```bash
 npm test
 node --check scripts/claude-companion.mjs
-conda run -n cc-plugin-codex-validate python /Users/sidvalecha/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py .
+python "${CODEX_HOME:-$HOME/.codex}/skills/.system/plugin-creator/scripts/validate_plugin.py" .
 ```
 
-The `cc-plugin-codex-validate` conda environment exists for plugin validation and includes Python plus PyYAML. Recreate it if needed with:
+Plugin validation needs Python plus PyYAML. Use any Python environment that has
+PyYAML installed. If you want an isolated conda environment, create one with:
 
 ```bash
-conda create -y -n cc-plugin-codex-validate python=3.14 pyyaml
+conda create -y -n codex-plugin-validate python=3.14 pyyaml
+conda activate codex-plugin-validate
 ```
 
 Real Claude smoke tests should use `--effort low`. Serious validation should use `--model opus` only when the user approves the cost and quota impact. Prefer `review --adversarial` over the separate `adversarial-review` alias in user-facing guidance.

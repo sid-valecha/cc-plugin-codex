@@ -22,7 +22,7 @@ Pass criteria:
 ```bash
 npm test
 node --check scripts/claude-companion.mjs
-conda run -n cc-plugin-codex-validate python /Users/sidvalecha/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py .
+python "${CODEX_HOME:-$HOME/.codex}/skills/.system/plugin-creator/scripts/validate_plugin.py" .
 ```
 
 Pass criteria:
@@ -42,15 +42,16 @@ codex plugin add cc-plugin-codex@personal
 If the marketplace name is not `personal`, read it first:
 
 ```bash
-python3 /Users/sidvalecha/.codex/skills/.system/plugin-creator/scripts/read_marketplace_name.py
+python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/plugin-creator/scripts/read_marketplace_name.py"
 codex plugin add cc-plugin-codex@<marketplace-name>
 ```
 
 Validate the installed cache copy:
 
 ```bash
-conda run -n cc-plugin-codex-validate python /Users/sidvalecha/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py /Users/sidvalecha/.codex/plugins/cache/personal/cc-plugin-codex/0.1.0
-node --check /Users/sidvalecha/.codex/plugins/cache/personal/cc-plugin-codex/0.1.0/scripts/claude-companion.mjs
+PLUGIN_CACHE="${CODEX_HOME:-$HOME/.codex}/plugins/cache/personal/cc-plugin-codex/0.1.0"
+python "${CODEX_HOME:-$HOME/.codex}/skills/.system/plugin-creator/scripts/validate_plugin.py" "$PLUGIN_CACHE"
+node --check "$PLUGIN_CACHE/scripts/claude-companion.mjs"
 ```
 
 Pass criteria:
@@ -65,8 +66,9 @@ Pass criteria:
 Run setup/status diagnostics from the installed cache when possible:
 
 ```bash
-node /Users/sidvalecha/.codex/plugins/cache/personal/cc-plugin-codex/0.1.0/scripts/claude-companion.mjs setup --json
-node /Users/sidvalecha/.codex/plugins/cache/personal/cc-plugin-codex/0.1.0/scripts/claude-companion.mjs status --limit 5
+PLUGIN_CACHE="${CODEX_HOME:-$HOME/.codex}/plugins/cache/personal/cc-plugin-codex/0.1.0"
+node "$PLUGIN_CACHE/scripts/claude-companion.mjs" setup --json
+node "$PLUGIN_CACHE/scripts/claude-companion.mjs" status --limit 5
 ```
 
 Pass criteria:
@@ -134,19 +136,22 @@ PY
 Plan smoke:
 
 ```bash
-node /Users/sidvalecha/.codex/plugins/cache/personal/cc-plugin-codex/0.1.0/scripts/claude-companion.mjs plan --cwd "$SMOKE_DIR" --prompt "Smoke test only. Inspect this tiny calculator fixture and propose the smallest plan to add one new operation without editing files. Reply with concise bullets and do not modify files." --effort low --model sonnet --json
+PLUGIN_CACHE="${CODEX_HOME:-$HOME/.codex}/plugins/cache/personal/cc-plugin-codex/0.1.0"
+node "$PLUGIN_CACHE/scripts/claude-companion.mjs" plan --cwd "$SMOKE_DIR" --prompt "Smoke test only. Inspect this tiny calculator fixture and propose the smallest plan to add one new operation without editing files. Reply with concise bullets and do not modify files." --effort low --model sonnet --json
 ```
 
 UI plan smoke:
 
 ```bash
-node /Users/sidvalecha/.codex/plugins/cache/personal/cc-plugin-codex/0.1.0/scripts/claude-companion.mjs ui --cwd "$SMOKE_DIR" --plan --prompt "Smoke test only. Treat this tiny calculator fixture as a developer-facing utility. Suggest one small UX or readability improvement without editing files. Reply concisely." --effort low --model sonnet --json
+PLUGIN_CACHE="${CODEX_HOME:-$HOME/.codex}/plugins/cache/personal/cc-plugin-codex/0.1.0"
+node "$PLUGIN_CACHE/scripts/claude-companion.mjs" ui --cwd "$SMOKE_DIR" --plan --prompt "Smoke test only. Treat this tiny calculator fixture as a developer-facing utility. Suggest one small UX or readability improvement without editing files. Reply concisely." --effort low --model sonnet --json
 ```
 
 Background wait smoke:
 
 ```bash
-node /Users/sidvalecha/.codex/plugins/cache/personal/cc-plugin-codex/0.1.0/scripts/claude-companion.mjs rescue --cwd "$SMOKE_DIR" --background --wait --wait-timeout-ms 120000 --permission-mode plan --effort low --model sonnet --prompt "Background wait smoke test only. Inspect the tiny calculator fixture and reply with exactly OK. Do not edit files." --json
+PLUGIN_CACHE="${CODEX_HOME:-$HOME/.codex}/plugins/cache/personal/cc-plugin-codex/0.1.0"
+node "$PLUGIN_CACHE/scripts/claude-companion.mjs" rescue --cwd "$SMOKE_DIR" --background --wait --wait-timeout-ms 120000 --permission-mode plan --effort low --model sonnet --prompt "Background wait smoke test only. Inspect the tiny calculator fixture and reply with exactly OK. Do not edit files." --json
 ```
 
 Prepare a review fixture with a seeded bug:
@@ -159,7 +164,7 @@ git init
 git add calculator.py test_calculator.py
 git commit -m "Initial calculator fixture"
 perl -0pi -e 's/if b == 0:/if b == "0":/' calculator.py
-conda run -n cc-plugin-codex-validate python -m unittest -v
+python -m unittest -v
 ```
 
 The final unittest command should fail before review; that confirms the seeded
@@ -168,7 +173,8 @@ bug exists.
 Structured review smoke:
 
 ```bash
-node /Users/sidvalecha/.codex/plugins/cache/personal/cc-plugin-codex/0.1.0/scripts/claude-companion.mjs review --cwd "$REVIEW_SMOKE_DIR" --effort low --model sonnet --json
+PLUGIN_CACHE="${CODEX_HOME:-$HOME/.codex}/plugins/cache/personal/cc-plugin-codex/0.1.0"
+node "$PLUGIN_CACHE/scripts/claude-companion.mjs" review --cwd "$REVIEW_SMOKE_DIR" --effort low --model sonnet --json
 ```
 
 Pass criteria:

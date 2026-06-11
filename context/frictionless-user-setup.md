@@ -38,7 +38,7 @@ delegation command through automatic review. On first real Claude use, approve
 the narrow plugin command prefix when Codex prompts, for example:
 
 ```text
-node /Users/<user>/.codex/plugins/cache/personal/cc-plugin-codex/0.1.0/scripts/claude-companion.mjs rescue
+node <codex-plugin-cache>/cc-plugin-codex/0.1.0/scripts/claude-companion.mjs rescue
 ```
 
 Do not approve broad `node` access unless the user explicitly wants that.
@@ -89,4 +89,3 @@ The plugin must not bypass a tenant/host disclosure denial.
   risk rationale.
 - Investigate whether Codex exposes a stable persistent command-approval API for
   plugins. If it does, wire first-run setup to request the exact prefix.
-

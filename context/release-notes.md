@@ -54,7 +54,7 @@ Current completed checks include:
 
 - fake-Claude test suite
 - Node syntax checks
-- plugin validation using the `cc-plugin-codex-validate` conda environment
+- plugin validation using Python with PyYAML installed
 - installed-cache validation
 - fresh-user personal marketplace install simulation
 - setup/status diagnostics

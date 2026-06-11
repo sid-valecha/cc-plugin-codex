@@ -1,7 +1,7 @@
 {
   "name": "cc-plugin-codex",
   "version": "0.1.0",
-  "description": "Codex plugin that invokes Claude Code as a guest subprocess.",
+  "description": "Codex plugin that delegates setup, rescue, planning, UI, and review work to Claude Code.",
   "type": "module",
   "private": true,
   "license": "MIT",
