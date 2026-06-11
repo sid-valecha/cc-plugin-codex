@@ -42,6 +42,31 @@ Run release-candidate validation in this order:
   - Claude ran Python unittest verification; Codex also verified locally with
     `python3 -m unittest -v`.
   - Actual model usage reported `claude-sonnet-4-6`.
+- 2026-06-10: Direct plugin-cache `claude-plan` smoke passed against the same
+  calculator fixture.
+  - Command used `plan --effort low --model sonnet --json`.
+  - The run completed with `permissionMode: "plan"` and session id
+    `f1a31ec0-cbac-42b9-b121-6d0e370e7600`.
+  - Fixture files were inspected after the run and remained unchanged.
+  - Claude plan mode created its normal plan artifact under `~/.claude/plans`.
+  - Actual model usage reported `claude-sonnet-4-6`.
+- 2026-06-10: Direct plugin-cache `claude-ui --plan` smoke passed against the
+  same calculator fixture.
+  - Command used `ui --plan --effort low --model sonnet --json`.
+  - The run completed with `permissionMode: "plan"` and session id
+    `b13d6846-e6b8-47f5-bf56-c23af1c722c8`.
+  - Claude returned a concise readability suggestion without editing files.
+  - Actual model usage reported `claude-sonnet-4-6`.
+- 2026-06-10: Direct plugin-cache `claude-review` smoke passed against a
+  throwaway git fixture at
+  `/private/tmp/cc-plugin-codex-review-smoke.7Tp7Ah`.
+  - Seeded diff changed `divide()` from `b == 0` to `b == "0"`.
+  - `conda run -n cc-plugin-codex-validate python -m unittest -v` failed as
+    expected before review.
+  - Command used `review --effort low --model sonnet --json`.
+  - Claude returned one critical finding on `calculator.py:17`, correctly
+    identifying the broken division-by-zero guard.
+  - Actual model usage reported `claude-sonnet-4-6`.
 
 ## Post-Milestone 5 Product Layer
 
