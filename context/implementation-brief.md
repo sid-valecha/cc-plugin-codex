@@ -18,14 +18,19 @@ Claude guest:
 - emits newline-delimited JSON in stream-json mode
 - persists sessions by Claude session id
 
-## Initial Plugin Skills
+## Plugin Skills
 
 - `claude-setup`: diagnose local Claude installation and auth
 - `claude-rescue`: delegate a task to Claude
+- `claude-plan`: request read-only planning, architecture, migration, or debugging strategy
+- `claude-ui`: request UI/design implementation, critique, or polish
 - `claude-status`: list active/recent Claude jobs
 - `claude-result`: show result for latest or selected job
 - `claude-cancel`: cancel a running Claude job
 - `claude-review`: run structured read-only review
+- `claude-adversarial-review`: compatibility alias for stricter review; prefer `claude-review` with `--adversarial`
+- `claude-permissions`: analyze plugin-owned logs for permission prompts and export reviewed `--allowedTools`
+- `claude-stop-review-hook`: configure the optional inert-by-default Stop hook review flow
 
 ## Script Interface
 
@@ -35,14 +40,19 @@ Expected main command:
 node scripts/claude-companion.mjs <subcommand> [options]
 ```
 
-Initial subcommands:
+Current subcommands:
 
 - `setup`
 - `rescue`
+- `plan`
+- `ui`
+- `design`
 - `status`
 - `result`
 - `cancel`
 - `review`
+- `adversarial-review`
+- `permissions`
 
 Useful global options:
 
@@ -55,9 +65,19 @@ Rescue options:
 
 - `--prompt <text>`
 - `--background`
+- `--wait`
+- `--wait-timeout-ms <n>`
 - `--write`
 - `--danger`
+- `--plan`
 - `--session-id <uuid>`
+- `--resume`
+- `--fresh`
+- `--effort <level>`
+- `--bare`
+- `--trust-local-dev`
+- `--allow-tool <pattern>`
+- `--allowed-tools-file <path>`
 
 Review options:
 

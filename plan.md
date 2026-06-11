@@ -341,7 +341,6 @@ Explicit non-goals unless evidence changes:
 
 - broker/multiplexer
 - primary transcript listing from `~/.claude/projects`
-- non-bare embedding
 - exact Claude Code UI parity
 
 Exit criteria:
@@ -364,8 +363,9 @@ Deliverables:
 - local install smoke test
 - README quickstart
 - troubleshooting guide
-- final issue list for deferred parity work
-- final issue list for deferred setup UX polish, including sandbox/keychain auth visibility
+- release checklist and release notes
+- final issue list for any remaining release blockers
+- setup UX polish for sandbox/keychain auth visibility
 
 Smoke tests:
 
@@ -381,6 +381,7 @@ Smoke tests:
 Exit criteria:
 
 - The repo can be handed to another user or agent with clear install and development instructions.
+- The release checklist, release notes, and RC validation log identify any remaining release gate.
 
 Estimated effort: 1 day.
 
@@ -394,9 +395,12 @@ Next product-layer ideas are tracked in `context/next-roadmap.md`:
 
 ## Worktree Strategy
 
-Use worktrees when parallel implementation starts. The repo is small now, so worktrees are most useful after Milestone 0 creates the basic structure.
+Historical implementation note: the original milestone branches below describe
+how the repo was expected to split during early implementation. The current
+release-candidate branch is `main`; new work should use focused branches or
+direct docs commits depending on risk, as described in the current chat.
 
-Recommended branches:
+Original recommended branches:
 
 - `main`: stable, only milestone-complete merges
 - `feat/scaffold-setup`: Milestone 0 and 0.5
@@ -404,11 +408,14 @@ Recommended branches:
 - `feat/review`: Milestone 2 and 3
 - `feat/hooks`: Milestone 4
 
-Avoid parallel edits to shared script internals until the interfaces are stable. In practice, complete scaffold/setup first, then split rescue/jobs and review.
+Avoid parallel edits to shared script internals unless one lead agent owns the
+interface and final validation.
 
 ## Subagent Strategy
 
-Use subagents only after the scaffold exists. Before that, the repo is too empty and parallel work would mostly create conflicts.
+The scaffold now exists. Use subagents only for bounded research, docs, fixture,
+or isolated test work where they can report exact files changed, tests run, and
+remaining risks.
 
 Good subagent assignments:
 
@@ -437,18 +444,18 @@ For a new Codex chat, attach or point the agent at:
 Suggested fresh-chat prompt:
 
 ```text
-We are building a Codex plugin that invokes Claude Code as a subprocess. Read plan.md and the context/ folder first. Implement the next incomplete milestone only, preserving the milestone boundaries and tests. Do not skip ahead unless the milestone exit criteria are satisfied.
+We are building a Codex plugin that invokes Claude Code as a subprocess. Read plan.md and the context/ folder first. Preserve milestone boundaries and tests. Current release-candidate status and the remaining gate are tracked in context/next-roadmap.md, context/release-checklist.md, and context/release-notes.md.
 ```
 
 ## Current Known Local Environment
 
-Observed during planning:
+Historical planning observations:
 
-- repo initially contained only `README.md`, `LICENSE`, and `.gitignore`
 - `claude` resolved to `/opt/homebrew/bin/claude`
 - Claude Code version was `2.1.145`
 - Node version was `v25.6.0`
 - npm version was `11.8.0`
 - `claude auth status --text` reported not logged in
 
-Treat these as planning observations, not portable requirements.
+Treat these as stale planning observations, not portable requirements. Current
+validated versions are recorded in `context/next-roadmap.md` RC validation log.

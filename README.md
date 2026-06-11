@@ -187,7 +187,8 @@ Avoid `--danger` unless the workspace is isolated and you explicitly want Claude
 
 Job state is stored under `PLUGIN_DATA`, `CODEX_PLUGIN_DATA`, `CLAUDE_PLUGIN_DATA`, or `~/.codex/plugins/data/claude-code` in that order. Use `--state-dir <path>` for tests or custom local installs.
 
-Future worktree workflows are intentionally not implemented yet.
+The plugin does not manage Git worktrees itself; use normal Git/Codex worktree
+workflows around the plugin when needed.
 
 Human `status` and `result` output includes job id, status, Claude session id, model, effort, permission mode, isolation, exit information when relevant, model usage when Claude reports it, and useful follow-up commands. JSON output preserves existing fields and may include `modelUsage` and `nextCommands` on job objects when available.
 

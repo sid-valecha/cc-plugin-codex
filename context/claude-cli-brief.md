@@ -51,7 +51,7 @@ Do not combine `--json-schema` with stream-json mode. If streaming wins, schema 
 - approval-like default: `--permission-mode default`
 - auto/no-ask mode: `--permission-mode auto`
 
-Initial plugin defaults:
+Current plugin defaults:
 
 - default permission mode: `acceptEdits`
 - `--plan`: `plan`
@@ -59,7 +59,7 @@ Initial plugin defaults:
 
 ## Model Mapping
 
-Initial defaults:
+Current defaults:
 
 - default model: `sonnet`
 - `spark`: `haiku`
@@ -123,8 +123,11 @@ Auth/install hints:
 - `npm install -g @anthropic-ai/claude-code`
 - `claude install stable`
 
-Planning observation on this machine:
+Historical planning observation on this machine:
 
 - `claude` was found at `/opt/homebrew/bin/claude`
 - version was `2.1.145`
 - auth status was not logged in
+
+Treat these as stale planning observations, not portable requirements. Current
+validated versions are recorded in `context/next-roadmap.md` RC validation log.
