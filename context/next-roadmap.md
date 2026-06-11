@@ -93,6 +93,23 @@ Detailed commands and pass/fail criteria are tracked in
     permission mode, isolation, exit code, actual model usage, and next
     commands.
   - Actual model usage reported `claude-sonnet-4-6`.
+- 2026-06-11: Fresh-user install simulation passed without real Claude calls.
+  - `codex plugin list` showed `cc-plugin-codex@personal` installed and
+    enabled from `/Users/sidvalecha/plugins/cc-plugin-codex`.
+  - `codex plugin add cc-plugin-codex@personal` reinstalled the plugin into
+    `/Users/sidvalecha/.codex/plugins/cache/personal/cc-plugin-codex/0.1.0`.
+  - Installed-cache plugin validation passed using the
+    `cc-plugin-codex-validate` conda environment.
+  - Installed-cache `scripts/claude-companion.mjs` passed `node --check`.
+  - Installed-cache skills included setup, rescue, plan, UI, review,
+    adversarial-review, permissions, status, result, cancel, and Stop hook.
+  - Installed-cache team marketplace template was present and its
+    `marketplace.json` parsed successfully.
+  - Installed-cache `setup --json` reported Node v26.3.0, npm 11.16.0,
+    Claude Code 2.1.153, and authenticated Claude Pro account status outside
+    the sandbox.
+  - Installed-cache `status --limit 5` rendered existing completed jobs with
+    session ids, model usage, and next result commands.
 
 ## Post-Milestone 5 Product Layer
 
