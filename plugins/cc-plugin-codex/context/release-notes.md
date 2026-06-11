@@ -41,7 +41,8 @@ through Codex-native skills and a deterministic Node entry point.
 - Setup recognizes `ANTHROPIC_API_KEY`, `CLAUDE_CODE_USE_BEDROCK=1`, and
   `CLAUDE_CODE_USE_VERTEX=1` as configured environment auth.
 - First-run Codex approval guidance for unmanaged local installs.
-- Local/personal marketplace docs and a copyable team marketplace template.
+- Public Git-backed marketplace install, local/personal marketplace docs, and a
+  copyable team marketplace template.
 - Release checklist with deterministic validation, low-cost smoke tests, fresh
   Codex skill smoke, and serious Opus validation criteria.
 
@@ -74,7 +75,8 @@ Current completed checks include:
   tool approval during noninteractive mode, the plugin reports
   `permission_blocked`.
 - Public OpenAI Plugin Directory publishing should wait until public self-serve
-  publishing exists and the release candidate is stable.
+  publishing exists. The current public install path is the Git-backed
+  `marketplace` branch.
 
 ### Remaining Release Gate
 

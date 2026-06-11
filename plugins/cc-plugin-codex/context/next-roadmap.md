@@ -207,6 +207,7 @@ Estimated effort: 0.5-1 day for investigation and a minimal explicit bridge.
 
 Current recommendation is documented in `context/marketplace-readiness.md`:
 
+- use the public Git-backed `marketplace` branch for normal OSS installs
 - keep personal/local marketplace installs for development and release-candidate
   validation
 - use a parent repo/team marketplace root for CLI/dev distribution

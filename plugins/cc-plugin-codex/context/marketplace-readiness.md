@@ -1,26 +1,45 @@
 # Marketplace Readiness
 
-This plugin is currently ready for personal/local installation and workspace
-testing. The next distribution step is repo/team marketplace packaging, not a
-public OpenAI Plugin Directory submission.
+This plugin is currently ready for public Git-backed marketplace installation,
+personal/local installation, and workspace testing. Public OpenAI Plugin
+Directory submission is still deferred until self-serve publishing is available.
 
 ## Recommendation
 
 Use these distribution paths in order:
 
-1. Personal/local marketplace while developing and validating release-candidate
+1. Public Git-backed marketplace for normal OSS install.
+2. Personal/local marketplace while developing and validating release-candidate
    behavior.
-2. Repo/team marketplace when another developer should install the plugin from a
+3. Repo/team marketplace when another developer should install the plugin from a
    shared Git source or curated internal plugin catalog.
-3. Workspace sharing from the Codex app when selected teammates should install
+4. Workspace sharing from the Codex app when selected teammates should install
    the plugin through the UI.
-4. Public OpenAI Plugin Directory only after public self-serve publishing is
+5. Public OpenAI Plugin Directory only after public self-serve publishing is
    available and the plugin is release-candidate stable.
 
 Do not add an MCP server just to call Claude Code. The current plugin shape is
 Codex skills plus a deterministic local Node entry point. MCP should be added
 only if the plugin needs structured tools, a persistent service, shared remote
 state, or integrations such as Figma/browser/developer-tool access.
+
+## Public Git-Backed Install
+
+The `marketplace` branch is a Codex marketplace root with this layout:
+
+```text
+.agents/plugins/marketplace.json
+plugins/cc-plugin-codex/
+```
+
+Install it with:
+
+```bash
+codex plugin marketplace add sid-valecha/cc-plugin-codex --ref marketplace
+codex plugin add cc-plugin-codex@claude-code-companion
+```
+
+Start a new Codex thread after installing so skill metadata is loaded.
 
 ## Personal Install
 
