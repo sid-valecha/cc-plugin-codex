@@ -2,6 +2,10 @@
 
 This repository contains a Codex plugin that lets Codex use Claude Code as a local guest subprocess. The current implementation includes setup diagnostics, foreground rescue, planning, UI/design help, managed background jobs, structured review, and permission proposal analysis.
 
+![Codex delegates a review to Claude Code](docs/demo.gif)
+
+The demo is generated with [docs/demo.tape](docs/demo.tape).
+
 ## Install In Codex
 
 Codex installs plugins from marketplace catalogs. Until this plugin is available
