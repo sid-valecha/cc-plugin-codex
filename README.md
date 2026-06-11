@@ -2,6 +2,62 @@
 
 This repository contains a Codex plugin that lets Codex use Claude Code as a local guest subprocess. The current implementation includes setup diagnostics, foreground rescue, planning, UI/design help, managed background jobs, structured review, and permission proposal analysis.
 
+## Install In Codex
+
+Codex installs plugins from a marketplace catalog. For a personal local install,
+clone this repository into the default personal marketplace plugin directory:
+
+```bash
+mkdir -p ~/plugins
+git clone https://github.com/sid-valecha/cc-plugin-codex.git ~/plugins/cc-plugin-codex
+```
+
+Then create or update `~/.agents/plugins/marketplace.json` so it includes this
+plugin entry:
+
+```json
+{
+  "name": "personal",
+  "interface": {
+    "displayName": "Personal"
+  },
+  "plugins": [
+    {
+      "name": "cc-plugin-codex",
+      "source": {
+        "source": "local",
+        "path": "./plugins/cc-plugin-codex"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
+```
+
+If `~/.agents/plugins/marketplace.json` already exists, merge only the
+`cc-plugin-codex` entry into its existing `plugins` array instead of replacing
+the whole file.
+
+Install the plugin from the personal marketplace:
+
+```bash
+codex plugin add cc-plugin-codex@personal
+```
+
+Restart Codex or open a new Codex thread, then ask:
+
+```text
+Use claude-setup to check whether Claude Code Companion is ready.
+```
+
+For a repo or team marketplace, start from `templates/team-marketplace/`, add
+that marketplace root with `codex plugin marketplace add <path-to-marketplace-root>`,
+then run `codex plugin add cc-plugin-codex@team-codex`.
+
 ## Quickstart
 
 Normal use is through Codex skills. Users should ask Codex to use
