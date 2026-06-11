@@ -29,6 +29,20 @@ Run release-candidate validation in this order:
    - run one meaningful rescue or review task
    - report actual `modelUsage` from JSON output or stored job metadata
 
+## RC Validation Log
+
+- 2026-06-10: Fresh Codex-thread `claude-rescue` smoke passed against the
+  throwaway Python calculator fixture at
+  `/private/tmp/cc-plugin-codex-smoke-python-calc`.
+  - Launched Codex with `--profile claude-companion`.
+  - Codex selected `cc-plugin-codex:claude-rescue`.
+  - The plugin cache script was invoked with `--trust-local-dev`.
+  - Codex host approval allowed the external Claude disclosure.
+  - Claude edited `calculator.py` so `power(a, b)` returns `a ** b`.
+  - Claude ran Python unittest verification; Codex also verified locally with
+    `python3 -m unittest -v`.
+  - Actual model usage reported `claude-sonnet-4-6`.
+
 ## Post-Milestone 5 Product Layer
 
 Claude is especially valuable for planning and frontend/UI design. Add these as
