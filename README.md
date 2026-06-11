@@ -47,8 +47,10 @@ Use claude-plan. Propose a migration plan for this module without editing files.
 Use claude-ui in plan mode. Review this UI and suggest concrete polish without editing files.
 ```
 
-The setup check is non-billable. It only runs `node --version`,
-`npm --version`, `claude --version`, and `claude auth status --text`.
+The setup check is non-billable. It checks `node --version`, `npm --version`,
+`claude --version`, and either environment auth (`ANTHROPIC_API_KEY`,
+`CLAUDE_CODE_USE_BEDROCK`, or `CLAUDE_CODE_USE_VERTEX`) or
+`claude auth status --text`.
 Setup output also prints first-run Codex approval guidance, including the
 optional `claude-companion` profile and narrow plugin command prefixes to
 approve for live Claude calls.
@@ -321,6 +323,7 @@ More detail is tracked in `context/host-permissions.md`.
 Claude auth:
 
 - `node scripts/claude-companion.mjs setup --json` should show `claudeAuth.ok: true`.
+- API-key/provider auth users can set `ANTHROPIC_API_KEY`, `CLAUDE_CODE_USE_BEDROCK=1`, or `CLAUDE_CODE_USE_VERTEX=1`; setup will report `claudeAuth.status: "env_configured"`.
 - If it reports unauthenticated, run `claude auth login --claudeai` for Claude subscription auth.
 - If `claude auth status --text` works in a normal terminal but plugin setup reports unauthenticated, Codex's sandbox may not be able to read Claude's OAuth/keychain session. Approve the Claude-invoking command to run outside the sandbox, or use bare-compatible auth.
 - For strict `--bare` mode, use bare-compatible auth such as `claude setup-token`, `ANTHROPIC_API_KEY`, Bedrock, Vertex, or `apiKeyHelper`.

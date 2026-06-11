@@ -48,6 +48,11 @@ If Claude Code is unauthenticated, guide the user to use one of:
 - `CLAUDE_CODE_USE_VERTEX=1` with GCP credentials
 - Claude Code `apiKeyHelper`
 
+The setup command treats `ANTHROPIC_API_KEY`,
+`CLAUDE_CODE_USE_BEDROCK=1`, or `CLAUDE_CODE_USE_VERTEX=1` as configured
+environment auth and reports `claudeAuth.status: "env_configured"`. Claude Code
+still validates API keys or provider credentials at runtime.
+
 If `claude auth status --text` succeeds in the user's normal terminal but the plugin setup check reports unauthenticated, treat it as a sandbox/keychain visibility problem instead of a missing login. Ask the user to approve the Claude-invoking command outside the sandbox, or guide them to bare-compatible auth such as `claude setup-token`, `ANTHROPIC_API_KEY`, provider credentials, or `apiKeyHelper`.
 
 For a smoother unmanaged local Codex setup, recommend a one-time profile that

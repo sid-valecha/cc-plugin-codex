@@ -61,6 +61,9 @@ function runSetup(binDir, { json = true, env = {} } = {}) {
       cwd: ROOT,
       env: {
         ...process.env,
+        ANTHROPIC_API_KEY: "",
+        CLAUDE_CODE_USE_BEDROCK: "",
+        CLAUDE_CODE_USE_VERTEX: "",
         ...env,
         PATH: binDir
       },
@@ -150,6 +153,53 @@ test("setup reports auth guidance when Claude auth is not ready", async () => {
   assert.match(payload.guidance.join("\n"), /apiKeyHelper/);
 });
 
+test("setup treats ANTHROPIC_API_KEY as configured auth", async () => {
+  const binDir = await makeBaseBin();
+  await addFakeClaude(binDir);
+
+  const result = await runSetup(binDir, {
+    env: {
+      ANTHROPIC_API_KEY: "test-api-key",
+      FAKE_CLAUDE_AUTH_TEXT: "Not logged in",
+      FAKE_CLAUDE_AUTH_EXIT: "1"
+    }
+  });
+  assert.equal(result.exitCode, 0);
+
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.ok, true);
+  assert.equal(payload.environmentAuth.variable, "ANTHROPIC_API_KEY");
+  const auth = payload.checks.find((check) => check.name === "claudeAuth");
+  assert.equal(auth.ok, true);
+  assert.equal(auth.status, "env_configured");
+  assert.equal(auth.authMode, "environment");
+  assert.equal(auth.environmentAuth.type, "api_key");
+  assert.match(auth.stdout, /ANTHROPIC_API_KEY API-key auth configured/);
+});
+
+test("setup treats Claude provider env vars as configured auth", async () => {
+  const binDir = await makeBaseBin();
+  await addFakeClaude(binDir);
+
+  const result = await runSetup(binDir, {
+    env: {
+      CLAUDE_CODE_USE_BEDROCK: "1",
+      FAKE_CLAUDE_AUTH_TEXT: "Not logged in",
+      FAKE_CLAUDE_AUTH_EXIT: "1"
+    }
+  });
+  assert.equal(result.exitCode, 0);
+
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.ok, true);
+  assert.equal(payload.environmentAuth.variable, "CLAUDE_CODE_USE_BEDROCK");
+  const auth = payload.checks.find((check) => check.name === "claudeAuth");
+  assert.equal(auth.status, "env_configured");
+  assert.equal(auth.environmentAuth.type, "bedrock");
+  assert.match(auth.stdout, /Amazon Bedrock provider auth configured/);
+  assert.match(auth.stdout, /validate provider credentials at runtime/);
+});
+
 test("setup preserves auth probe failures that are not auth failures", async () => {
   const binDir = await makeBaseBin();
   await addFakeClaude(binDir);
@@ -222,4 +272,21 @@ test("setup human output surfaces hidden auth guidance", async () => {
   assert.match(result.stdout, /approve this Claude command outside the sandbox/);
   assert.match(result.stdout, /token\/API\/provider auth/);
   assert.match(result.stdout, /Setup needs attention\./);
+});
+
+test("setup human output surfaces environment auth", async () => {
+  const binDir = await makeBaseBin();
+  await addFakeClaude(binDir);
+
+  const result = await runSetup(binDir, {
+    json: false,
+    env: {
+      CLAUDE_CODE_USE_VERTEX: "true",
+      FAKE_CLAUDE_AUTH_TEXT: "Not logged in",
+      FAKE_CLAUDE_AUTH_EXIT: "1"
+    }
+  });
+  assert.equal(result.exitCode, 0);
+  assert.match(result.stdout, /\[OK\] environment CLAUDE_CODE_USE_VERTEX: Google Vertex AI provider auth configured/);
+  assert.match(result.stdout, /Setup looks ready\./);
 });

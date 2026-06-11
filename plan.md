@@ -437,9 +437,10 @@ Keep one lead agent responsible for:
 For a new Codex chat, attach or point the agent at:
 
 - `plan.md`
-- `context/agent-instructions.md`
-- `context/implementation-brief.md`
 - `context/claude-cli-brief.md`
+- `context/next-roadmap.md`
+- `context/release-checklist.md`
+- `context/release-notes.md`
 
 Suggested fresh-chat prompt:
 

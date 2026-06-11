@@ -114,6 +114,9 @@ claude auth status --text
 Auth/install hints:
 
 - `claude auth login --claudeai`
+- Setup treats `ANTHROPIC_API_KEY`, `CLAUDE_CODE_USE_BEDROCK=1`, or
+  `CLAUDE_CODE_USE_VERTEX=1` as configured environment auth and reports
+  `claudeAuth.status: "env_configured"`.
 - If `claude auth status --text` succeeds in a normal terminal but setup reports unauthenticated from the agent, the sandbox may not be able to read Claude's OAuth/keychain session; approve the Claude command outside the sandbox or use bare-compatible auth.
 - `claude setup-token`
 - `ANTHROPIC_API_KEY`

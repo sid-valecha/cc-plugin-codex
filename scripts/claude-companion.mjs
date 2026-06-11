@@ -37,6 +37,24 @@ const AUTH_PROBE_TIMEOUT_GUIDANCE = [
   "`claude auth status --text` timed out; check whether Claude Code is hanging or waiting for interactive input."
 ];
 
+const ENV_AUTH_SOURCES = [
+  {
+    type: "api_key",
+    variable: "ANTHROPIC_API_KEY",
+    label: "ANTHROPIC_API_KEY API-key auth"
+  },
+  {
+    type: "bedrock",
+    variable: "CLAUDE_CODE_USE_BEDROCK",
+    label: "Amazon Bedrock provider auth"
+  },
+  {
+    type: "vertex",
+    variable: "CLAUDE_CODE_USE_VERTEX",
+    label: "Google Vertex AI provider auth"
+  }
+];
+
 const FIRST_RUN_APPROVAL_GUIDANCE = [
   "Live Claude calls also need Codex host approval because prompts, diffs, or workspace context can be sent to Claude Code.",
   "For unmanaged local Codex installs, create `~/.codex/claude-companion.config.toml` with approval_policy=\"on-request\", approvals_reviewer=\"user\", and sandbox_mode=\"workspace-write\".",
@@ -397,6 +415,9 @@ function summarizeProbe(result) {
   if (result.status === "skipped") {
     return result.detail;
   }
+  if (result.status === "env_configured") {
+    return firstLine(result.stdout) || "environment auth configured";
+  }
   if (result.status === "unauthenticated") {
     const detail = firstLine(result.stdout) || firstLine(result.stderr);
     return detail ? `${AUTH_UNAVAILABLE_SUMMARY} (${detail})` : AUTH_UNAVAILABLE_SUMMARY;
@@ -419,6 +440,47 @@ function createSkippedCheck(name, command, detail) {
     exitCode: null,
     signal: null,
     guidance: []
+  };
+}
+
+function isTruthyEnvValue(value) {
+  if (!value) {
+    return false;
+  }
+  const normalized = String(value).trim().toLowerCase();
+  return normalized !== "" && normalized !== "0" && normalized !== "false" && normalized !== "no";
+}
+
+function detectEnvironmentAuth(env = process.env) {
+  for (const source of ENV_AUTH_SOURCES) {
+    if (isTruthyEnvValue(env[source.variable])) {
+      return source;
+    }
+  }
+  return null;
+}
+
+function createEnvironmentAuthCheck(source) {
+  const providerNote =
+    source.type === "api_key"
+      ? "Claude Code can use this API key at runtime."
+      : "Claude Code will validate provider credentials at runtime.";
+  return {
+    name: "claudeAuth",
+    command: ["environment", source.variable],
+    ok: true,
+    status: "env_configured",
+    stdout: `${source.label} configured. ${providerNote}\n`,
+    stderr: "",
+    exitCode: null,
+    signal: null,
+    guidance: [],
+    authMode: "environment",
+    environmentAuth: {
+      type: source.type,
+      variable: source.variable,
+      label: source.label
+    }
   };
 }
 
@@ -532,6 +594,7 @@ function evaluateAuthProbe(result) {
 
 async function runSetup() {
   const checks = [];
+  const environmentAuth = detectEnvironmentAuth();
 
   checks.push(
     await runProbe("node", "node", ["--version"], {
@@ -557,6 +620,8 @@ async function runSetup() {
         "`claude` must be installed before auth can be checked."
       )
     );
+  } else if (environmentAuth) {
+    checks.push(createEnvironmentAuthCheck(environmentAuth));
   } else {
     checks.push(
       evaluateAuthProbe(
@@ -571,6 +636,7 @@ async function runSetup() {
     ok: checks.every((check) => check.ok),
     checks,
     guidance: collectGuidance(checks),
+    environmentAuth,
     firstRunApproval: {
       guidance: FIRST_RUN_APPROVAL_GUIDANCE,
       profile: FIRST_RUN_PROFILE,

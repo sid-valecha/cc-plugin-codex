@@ -38,6 +38,8 @@ through Codex-native skills and a deterministic Node entry point.
   `--allowed-tools-file` support.
 - Permission-blocked Claude runs are surfaced as `permission_blocked`, not
   silent success.
+- Setup recognizes `ANTHROPIC_API_KEY`, `CLAUDE_CODE_USE_BEDROCK=1`, and
+  `CLAUDE_CODE_USE_VERTEX=1` as configured environment auth.
 - First-run Codex approval guidance for unmanaged local installs.
 - Local/personal marketplace docs and a copyable team marketplace template.
 - Release checklist with deterministic validation, low-cost smoke tests, fresh
