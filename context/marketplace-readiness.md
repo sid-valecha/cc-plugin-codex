@@ -89,6 +89,7 @@ Start a new Codex thread after reinstalling so skill metadata is reloaded.
 Repo/team marketplace packaging should use a parent marketplace root. Do not
 assume this plugin repository can be used as both the marketplace root and the
 plugin root unless the marketplace source path has been validated explicitly.
+Use `templates/team-marketplace/` as the copyable starting point.
 
 Recommended layout:
 
@@ -199,4 +200,3 @@ node scripts/claude-companion.mjs review --effort low --model sonnet --json
 If Codex blocks these calls under external-disclosure policy, the plugin must
 not bypass that policy. Ask the user or workspace admin to allow the narrow
 plugin command prefixes, then retry.
-
