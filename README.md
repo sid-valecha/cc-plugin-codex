@@ -247,7 +247,7 @@ codex plugin add cc-plugin-codex@<marketplace-name>
 
 Start a new Codex thread after reinstalling so Codex picks up updated skills, hooks, and metadata.
 
-For repo/team distribution, use a parent marketplace root with this plugin under `plugins/cc-plugin-codex/`, then install that marketplace with `codex plugin marketplace add`. See `context/marketplace-readiness.md` for the recommended layout, Git/local install commands, and the current public-directory/MCP decision.
+For repo/team distribution, use a parent marketplace root with this plugin under `plugins/cc-plugin-codex/`, then install that marketplace with `codex plugin marketplace add`. Start from `templates/team-marketplace/` or see `context/marketplace-readiness.md` for the recommended layout, Git/local install commands, and the current public-directory/MCP decision.
 
 ## Validation And Smoke Tests
 
