@@ -4,45 +4,18 @@ This repository contains a Codex plugin that lets Codex use Claude Code as a loc
 
 ## Install In Codex
 
-Codex installs plugins from a marketplace catalog. For a personal local install,
-clone this repository into the default personal marketplace plugin directory:
+Codex installs plugins from marketplace catalogs. Until this plugin is available
+from a public directory, use a personal local marketplace.
+
+Clone the plugin into the default personal marketplace plugin directory:
 
 ```bash
 mkdir -p ~/plugins
 git clone https://github.com/sid-valecha/cc-plugin-codex.git ~/plugins/cc-plugin-codex
 ```
 
-Then create or update `~/.agents/plugins/marketplace.json` so it includes this
-plugin entry:
-
-```json
-{
-  "name": "personal",
-  "interface": {
-    "displayName": "Personal"
-  },
-  "plugins": [
-    {
-      "name": "cc-plugin-codex",
-      "source": {
-        "source": "local",
-        "path": "./plugins/cc-plugin-codex"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Productivity"
-    }
-  ]
-}
-```
-
-If `~/.agents/plugins/marketplace.json` already exists, merge only the
-`cc-plugin-codex` entry into its existing `plugins` array instead of replacing
-the whole file.
-
-Install the plugin from the personal marketplace:
+Add the `cc-plugin-codex` entry to `~/.agents/plugins/marketplace.json` as
+shown in [Local Install And Update](#local-install-and-update), then install:
 
 ```bash
 codex plugin add cc-plugin-codex@personal
@@ -54,9 +27,7 @@ Restart Codex or open a new Codex thread, then ask:
 Use claude-setup to check whether Claude Code Companion is ready.
 ```
 
-For a repo or team marketplace, start from `templates/team-marketplace/`, add
-that marketplace root with `codex plugin marketplace add <path-to-marketplace-root>`,
-then run `codex plugin add cc-plugin-codex@team-codex`.
+For repo or team distribution, use `templates/team-marketplace/`.
 
 ## Quickstart
 
@@ -266,7 +237,14 @@ For a local Codex plugin install, use a local marketplace entry that points at t
 
 The default personal marketplace is discovered implicitly by Codex. Do not run `codex plugin marketplace add` for that default path. Non-default marketplace files must be added explicitly with `codex plugin marketplace add <path-to-marketplace-root>`.
 
-A personal marketplace entry for this plugin should use the plugin name from `.codex-plugin/plugin.json` and a local source path relative to the marketplace root:
+Create the marketplace directory if needed:
+
+```bash
+mkdir -p ~/.agents/plugins
+```
+
+If `~/.agents/plugins/marketplace.json` already exists, merge only this plugin
+entry into its existing `plugins` array:
 
 ```json
 {
@@ -280,6 +258,32 @@ A personal marketplace entry for this plugin should use the plugin name from `.c
     "authentication": "ON_INSTALL"
   },
   "category": "Productivity"
+}
+```
+
+If the file does not exist yet, create it with the default personal marketplace
+root and the plugin entry:
+
+```json
+{
+  "name": "personal",
+  "interface": {
+    "displayName": "Personal"
+  },
+  "plugins": [
+    {
+      "name": "cc-plugin-codex",
+      "source": {
+        "source": "local",
+        "path": "./plugins/cc-plugin-codex"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
 }
 ```
 
