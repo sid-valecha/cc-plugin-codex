@@ -4,43 +4,19 @@ This repository contains a Codex plugin that lets Codex use Claude Code as a loc
 
 ## Quickstart
 
-In normal use, ask Codex to use the plugin skills (`claude-setup`, `claude-rescue`, `claude-plan`, `claude-ui`, `claude-review`, and job-management skills). The raw Node commands below are for development, validation, and debugging.
+Normal use is through Codex skills. Users should ask Codex to use
+`claude-setup`, `claude-rescue`, `claude-plan`, `claude-ui`, `claude-review`,
+or the job-management skills instead of running the Node script by hand.
 
-Run the setup check from the plugin root:
-
-```bash
-node scripts/claude-companion.mjs setup
-```
-
-For JSON output:
-
-```bash
-node scripts/claude-companion.mjs setup --json
-```
-
-The setup check is non-billable. It only runs:
-
-- `node --version`
-- `npm --version`
-- `claude --version`
-- `claude auth status --text`
-
-Setup output also prints first-run Codex approval guidance, including the optional `claude-companion` profile and narrow plugin command prefixes to approve for live Claude calls.
-
-If Claude Code is missing, install it with:
+First-time local setup:
 
 ```bash
 npm install -g @anthropic-ai/claude-code
 claude install stable
+claude auth login --claudeai
 ```
 
-If auth is missing, use `claude auth login --claudeai` for Claude subscription accounts. For strict `--bare` mode, use `claude setup-token`, `ANTHROPIC_API_KEY`, Bedrock with `CLAUDE_CODE_USE_BEDROCK=1`, Vertex with `CLAUDE_CODE_USE_VERTEX=1`, or Claude Code `apiKeyHelper`.
-
-First-run live Claude calls also need host approval because they can send prompts, diffs, or workspace context to Claude Code. When Codex offers persistent approvals, approve the narrow command prefix for the mode you are using once, then future calls should not need repeated approval unless auth, policy, or host settings change. See Host Permissions below.
-
-### Smooth First Run
-
-For unmanaged local Codex installs, make Claude Companion a one-time Codex profile so approvals route to the user instead of an automatic reviewer:
+For unmanaged local Codex installs, create the optional approval profile once:
 
 ```bash
 cat > ~/.codex/claude-companion.config.toml <<'EOF'
@@ -48,15 +24,51 @@ approval_policy = "on-request"
 approvals_reviewer = "user"
 sandbox_mode = "workspace-write"
 EOF
-```
-
-Start Codex with that profile:
-
-```bash
 codex --profile claude-companion
 ```
 
-On the first real Claude call, approve the narrow plugin command that Codex shows, such as:
+Then ask Codex:
+
+```text
+Use claude-setup to check whether Claude Code Companion is ready.
+```
+
+For actual work, use prompts like:
+
+```text
+Use claude-rescue with trusted local dev mode. Fix the failing test, run the test command, and report the result.
+```
+
+```text
+Use claude-plan. Propose a migration plan for this module without editing files.
+```
+
+```text
+Use claude-ui in plan mode. Review this UI and suggest concrete polish without editing files.
+```
+
+The setup check is non-billable. It only runs `node --version`,
+`npm --version`, `claude --version`, and `claude auth status --text`.
+Setup output also prints first-run Codex approval guidance, including the
+optional `claude-companion` profile and narrow plugin command prefixes to
+approve for live Claude calls.
+
+If auth is missing, use `claude auth login --claudeai` for Claude subscription accounts. For strict `--bare` mode, use `claude setup-token`, `ANTHROPIC_API_KEY`, Bedrock with `CLAUDE_CODE_USE_BEDROCK=1`, Vertex with `CLAUDE_CODE_USE_VERTEX=1`, or Claude Code `apiKeyHelper`.
+
+First-run live Claude calls also need host approval because they can send prompts, diffs, or workspace context to Claude Code. When Codex offers persistent approvals, approve the narrow command prefix for the mode you are using once, then future calls should not need repeated approval unless auth, policy, or host settings change. See Host Permissions below.
+
+Raw Node commands are for development, validation, and debugging:
+
+```bash
+node scripts/claude-companion.mjs setup
+node scripts/claude-companion.mjs setup --json
+node scripts/claude-companion.mjs rescue --prompt "Inspect the failing test and suggest a fix"
+```
+
+### Smooth First Run
+
+On the first real Claude call from `codex --profile claude-companion`, approve
+the narrow plugin command that Codex shows, such as:
 
 ```text
 node /Users/<user>/.codex/plugins/cache/personal/cc-plugin-codex/0.1.0/scripts/claude-companion.mjs rescue
@@ -66,7 +78,7 @@ After that, normal trusted-local development tasks can use `claude-rescue` with 
 
 ## Codex Skill
 
-The initial user-facing skill is:
+The user-facing skills are:
 
 - `claude-setup`: diagnose local Claude Code installation and auth without sending a prompt to Claude.
 - `claude-rescue`: delegate a foreground task to Claude Code through headless stream-json mode.
@@ -283,7 +295,7 @@ node scripts/claude-companion.mjs review --effort low --model sonnet --json
 
 Use `--model opus` only for serious validation when the cost and quota impact are acceptable.
 
-The recommended release-candidate validation order and the next product-layer ideas are tracked in `context/next-roadmap.md`. Exact release validation commands and pass/fail criteria are tracked in `context/release-checklist.md`.
+The recommended release-candidate validation order and the next product-layer ideas are tracked in `context/next-roadmap.md`. Exact release validation commands and pass/fail criteria are tracked in `context/release-checklist.md`. Current release-candidate notes are tracked in `context/release-notes.md`.
 
 ## Host Permissions
 
