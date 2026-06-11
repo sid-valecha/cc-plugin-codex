@@ -34,6 +34,23 @@ Detailed commands and pass/fail criteria are tracked in
 
 ## RC Validation Log
 
+- 2026-06-11: Serious Opus structured review validation passed against a
+  throwaway git fixture at
+  `/private/tmp/cc-plugin-codex-opus-review.mJOMK1`.
+  - Created and committed a passing Python calculator baseline, then seeded a
+    one-line bug changing `divide()` from `b == 0` to `b == "0"`.
+  - `python3 -m unittest -v` failed as expected before review with
+    `ZeroDivisionError` for `divide(1, 0)`.
+  - Command used `review --model opus --json` through
+    `scripts/claude-companion.mjs`.
+  - Claude returned a high-severity finding on `calculator.py:17`, correctly
+    identifying that the divide-by-zero guard no longer catches numeric zero.
+  - Claude also returned a medium test-coverage finding; this was not fully
+    grounded because the fixture did include a failing divide-by-zero test, but
+    the primary seeded regression was identified correctly.
+  - Session id: `e38627e4-4c79-40f6-9afc-65ca6a9eb7e4`.
+  - Actual model usage reported `claude-opus-4-7`; reported cost was
+    `$0.4909675`.
 - 2026-06-10: Fresh Codex-thread `claude-rescue` smoke passed against the
   throwaway Python calculator fixture at
   `/private/tmp/cc-plugin-codex-smoke-python-calc`.
