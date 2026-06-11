@@ -4,21 +4,12 @@ This repository contains a Codex plugin that lets Codex use Claude Code as a loc
 
 ## Install In Codex
 
-Codex installs plugins from marketplace catalogs. Until this plugin is available
-from a public directory, use a personal local marketplace.
-
-Clone the plugin into the default personal marketplace plugin directory:
+Codex installs plugins from marketplace catalogs. Add the public Git-backed
+marketplace for this plugin, then install it:
 
 ```bash
-mkdir -p ~/plugins
-git clone https://github.com/sid-valecha/cc-plugin-codex.git ~/plugins/cc-plugin-codex
-```
-
-Add the `cc-plugin-codex` entry to `~/.agents/plugins/marketplace.json` as
-shown in [Local Install And Update](#local-install-and-update), then install:
-
-```bash
-codex plugin add cc-plugin-codex@personal
+codex plugin marketplace add sid-valecha/cc-plugin-codex --ref marketplace
+codex plugin add cc-plugin-codex@claude-code-companion
 ```
 
 Restart Codex or open a new Codex thread, then ask:
@@ -27,7 +18,17 @@ Restart Codex or open a new Codex thread, then ask:
 Use claude-setup to check whether Claude Code Companion is ready.
 ```
 
-For repo or team distribution, use `templates/team-marketplace/`.
+For local development, clone the plugin and use a personal marketplace entry as
+shown in [Local Install And Update](#local-install-and-update):
+
+```bash
+mkdir -p ~/plugins
+git clone https://github.com/sid-valecha/cc-plugin-codex.git ~/plugins/cc-plugin-codex
+codex plugin add cc-plugin-codex@personal
+```
+
+For repo or team distribution beyond this public marketplace, use
+`templates/team-marketplace/`.
 
 ## Quickstart
 
