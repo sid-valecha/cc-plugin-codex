@@ -140,9 +140,10 @@ test("setup reports auth guidance when Claude auth is not ready", async () => {
   assert.equal(auth.ok, false);
   assert.equal(auth.status, "unauthenticated");
   assert.match(payload.guidance.join("\n"), /claude auth login/);
+  assert.match(payload.guidance.join("\n"), /not ready or is not visible to this process/);
   assert.match(payload.guidance.join("\n"), /normal terminal/);
   assert.match(payload.guidance.join("\n"), /sandbox/);
-  assert.match(payload.guidance.join("\n"), /OAuth\/keychain/);
+  assert.match(payload.guidance.join("\n"), /token\/API\/provider auth/);
   assert.match(payload.guidance.join("\n"), /ANTHROPIC_API_KEY/);
   assert.match(payload.guidance.join("\n"), /CLAUDE_CODE_USE_BEDROCK=1/);
   assert.match(payload.guidance.join("\n"), /CLAUDE_CODE_USE_VERTEX=1/);
@@ -202,4 +203,23 @@ test("setup emits human-readable diagnostics", async () => {
   assert.match(result.stdout, /codex --profile claude-companion/);
   assert.match(result.stdout, /node scripts\/claude-companion\.mjs rescue/);
   assert.match(result.stdout, /Setup looks ready\./);
+});
+
+test("setup human output surfaces hidden auth guidance", async () => {
+  const binDir = await makeBaseBin();
+  await addFakeClaude(binDir);
+
+  const result = await runSetup(binDir, {
+    json: false,
+    env: {
+      FAKE_CLAUDE_AUTH_TEXT: "Not logged in",
+      FAKE_CLAUDE_AUTH_EXIT: "0"
+    }
+  });
+  assert.equal(result.exitCode, 1);
+  assert.match(result.stdout, /\[FAIL\] claude auth status --text: Claude auth is not ready or not visible to this process \(Not logged in\)/);
+  assert.match(result.stdout, /If `claude auth status --text` works in a normal terminal/);
+  assert.match(result.stdout, /approve this Claude command outside the sandbox/);
+  assert.match(result.stdout, /token\/API\/provider auth/);
+  assert.match(result.stdout, /Setup needs attention\./);
 });

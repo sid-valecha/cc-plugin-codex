@@ -438,9 +438,9 @@ Known non-parity gaps to close before release candidate:
 
 - None currently known.
 
-Deferred setup UX polish:
+Setup auth UX polish:
 
-- Improve setup rendering for the documented sandbox/keychain auth visibility case. See `context/deferred-setup-auth-ux.md`.
+- Implemented minimal setup rendering for the documented sandbox/keychain auth visibility case. See `context/deferred-setup-auth-ux.md`.
 
 ## Development
 
