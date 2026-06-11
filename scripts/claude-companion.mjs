@@ -15,9 +15,13 @@ const INSTALL_GUIDANCE = [
   "After installing, run `claude install stable` to select the stable channel."
 ];
 
+const AUTH_UNAVAILABLE_SUMMARY = "Claude auth is not ready or not visible to this process";
+const AUTH_VISIBILITY_GUIDANCE =
+  "Claude auth is not ready or is not visible to this process. If `claude auth status --text` works in a normal terminal, approve this Claude command outside the sandbox or use token/API/provider auth.";
+
 const AUTH_GUIDANCE = [
   "Authenticate interactively with `claude auth login --claudeai` for Claude subscription accounts.",
-  "If `claude auth status --text` works in a normal terminal but this setup check fails, Codex's sandbox may not be able to read Claude's OAuth/keychain session; approve the Claude command to run outside the sandbox or use bare-compatible auth.",
+  AUTH_VISIBILITY_GUIDANCE,
   "Run `claude setup-token` for long-lived subscription auth in strict bare mode.",
   "Or set `ANTHROPIC_API_KEY` for API-key auth.",
   "For Amazon Bedrock, set `CLAUDE_CODE_USE_BEDROCK=1` and configure AWS credentials.",
@@ -394,7 +398,8 @@ function summarizeProbe(result) {
     return result.detail;
   }
   if (result.status === "unauthenticated") {
-    return firstLine(result.stdout) || firstLine(result.stderr) || "unauthenticated";
+    const detail = firstLine(result.stdout) || firstLine(result.stderr);
+    return detail ? `${AUTH_UNAVAILABLE_SUMMARY} (${detail})` : AUTH_UNAVAILABLE_SUMMARY;
   }
   if (result.ok) {
     return firstLine(result.stdout) || firstLine(result.stderr) || "ok";
