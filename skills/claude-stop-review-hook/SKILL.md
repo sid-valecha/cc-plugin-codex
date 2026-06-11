@@ -49,6 +49,10 @@ Model guidance:
 
 Manual smoke test:
 
+Use the companion script from the installed plugin root. If the current working
+directory is not this plugin checkout, resolve the script relative to this skill
+file, for example `../../scripts/claude-companion.mjs`.
+
 ```bash
 node scripts/claude-companion.mjs hook-stop-review --json
 ```

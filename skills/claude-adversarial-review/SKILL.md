@@ -7,6 +7,11 @@ description: Compatibility alias for stricter Claude review; prefer claude-revie
 
 Use `claude-review` with `--adversarial` for new stricter reviews. This compatibility skill remains available for parity with earlier plugin versions.
 
+Use the companion script from the installed plugin root. If the current working
+directory is not this plugin checkout, resolve the script relative to this skill
+file, for example `../../scripts/claude-companion.mjs`, and pass `--cwd
+<target-repo>` for the repository being reviewed.
+
 Real adversarial review calls send diffs and review prompts to Claude Code and may spend quota. If the Codex host offers persistent approvals, prefer approving the narrow prefix `node scripts/claude-companion.mjs review` and running `review --adversarial` instead of approving a separate adversarial command. If host policy blocks external disclosure, do not bypass it.
 
 Review uncommitted changes:

@@ -7,6 +7,12 @@ description: Delegate a foreground read-only or write-capable task to Claude Cod
 
 Use this skill when the user wants Claude Code to help with a bounded task from the current repository.
 
+Use the companion script from the installed plugin root. If the current working
+directory is not this plugin checkout, do not first try
+`node scripts/claude-companion.mjs`; resolve the script relative to this skill
+file, for example `../../scripts/claude-companion.mjs` from the skill directory.
+Pass `--cwd <target-repo>` when delegating work for another repository.
+
 Before using rescue, confirm setup is ready:
 
 ```bash

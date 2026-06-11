@@ -7,6 +7,11 @@ description: Ask Claude Code for frontend UI/design implementation, critique, vi
 
 Use this skill when the user wants Claude Code's help building or polishing frontend UI, landing pages, product flows, responsive layout, accessibility, or visual design details.
 
+Use the companion script from the installed plugin root. If the current working
+directory is not this plugin checkout, resolve the script relative to this skill
+file, for example `../../scripts/claude-companion.mjs`, and pass `--cwd
+<target-repo>` for the repository being edited or critiqued.
+
 Real UI/design calls can send prompts and workspace context to Claude Code and may spend quota. If the Codex host offers persistent approvals, ask the user to approve the narrow prefixes `node scripts/claude-companion.mjs ui` and `node scripts/claude-companion.mjs design` instead of broad commands like `node`. If host policy blocks external disclosure, do not bypass it.
 
 If the host approval system denies the UI/design command because it would disclose workspace context to Claude, stop and report that Claude UI/design was blocked. Do not silently complete the task locally with Codex during a Claude integration smoke test. Only fall back to local Codex implementation if the user explicitly asks for a local fallback after the block is reported.
