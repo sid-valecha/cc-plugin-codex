@@ -7,6 +7,10 @@ description: Read the latest or selected Claude Code companion job result.
 
 Use this skill when the user wants the result from a completed or running Claude companion job.
 
+Use the companion script from the installed plugin root. If the current working
+directory is not this plugin checkout, resolve the script relative to this skill
+file, for example `../../scripts/claude-companion.mjs`.
+
 Run:
 
 ```bash

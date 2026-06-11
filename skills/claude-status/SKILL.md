@@ -7,6 +7,10 @@ description: List active and recent Claude Code companion jobs from the plugin j
 
 Use this skill when the user wants to see active or recent Claude companion jobs.
 
+Use the companion script from the installed plugin root. If the current working
+directory is not this plugin checkout, resolve the script relative to this skill
+file, for example `../../scripts/claude-companion.mjs`.
+
 Run:
 
 ```bash

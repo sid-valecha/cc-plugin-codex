@@ -7,7 +7,13 @@ description: Diagnose whether Claude Code is installed and authenticated for thi
 
 Use this skill when the user wants to check whether Claude Code is available for the Codex Claude companion plugin, or when Claude delegation fails before a task starts.
 
-Run the setup diagnostic from the plugin root:
+Run the setup diagnostic with the companion script from the installed plugin
+root. If the current working directory is not this plugin checkout, do not first
+try `node scripts/claude-companion.mjs`; resolve the script relative to this
+skill file, for example `../../scripts/claude-companion.mjs` from the skill
+directory.
+
+From the plugin root:
 
 ```bash
 node scripts/claude-companion.mjs setup

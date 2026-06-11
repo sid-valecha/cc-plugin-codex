@@ -7,6 +7,10 @@ description: Analyze plugin-owned Claude Code job logs for permission prompts an
 
 Use this skill when the user wants to review repeated Claude Code permission prompts and produce explicit allowlist arguments for future Claude runs.
 
+Use the companion script from the installed plugin root. If the current working
+directory is not this plugin checkout, resolve the script relative to this skill
+file, for example `../../scripts/claude-companion.mjs`.
+
 Analyze a specific job:
 
 ```bash

@@ -7,6 +7,11 @@ description: Run a structured, read-only Claude Code review over the current git
 
 Use this skill when the user wants Claude Code to review code changes without mutating files.
 
+Use the companion script from the installed plugin root. If the current working
+directory is not this plugin checkout, resolve the script relative to this skill
+file, for example `../../scripts/claude-companion.mjs`, and pass `--cwd
+<target-repo>` for the repository being reviewed.
+
 Real review calls send diffs and review prompts to Claude Code and may spend quota. If the Codex host offers persistent approvals, ask the user to approve the narrow prefix `node scripts/claude-companion.mjs review` instead of broad commands like `node`. If host policy blocks external disclosure, do not bypass it.
 
 Review uncommitted changes:
