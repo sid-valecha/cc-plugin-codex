@@ -2487,8 +2487,29 @@ async function runCommand(
     const stderrChunks = [];
     let child;
     let settled = false;
+    let exited = false;
     let timedOut = false;
     let timeout = null;
+    let stdoutWrite = Promise.resolve();
+    let stderrWrite = Promise.resolve();
+
+    const writeLiveStdout = (chunk) => {
+      if (!stdoutPath) {
+        return;
+      }
+      stdoutWrite = stdoutWrite.then(() => appendFile(stdoutPath, chunk)).catch(() => {});
+    };
+    const writeLiveStderr = (chunk) => {
+      if (!stderrPath) {
+        return;
+      }
+      stderrWrite = stderrWrite.then(() => appendFile(stderrPath, chunk)).catch(() => {});
+    };
+    const settle = (result) => {
+      Promise.all([stdoutWrite, stderrWrite]).then(() => {
+        resolve(result);
+      });
+    };
 
     try {
       child = spawn(command, args, {
@@ -2515,16 +2536,17 @@ async function runCommand(
 
     if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
       timeout = setTimeout(() => {
+        if (settled || exited || !isProcessAlive(child.pid)) {
+          return;
+        }
         timedOut = true;
         const message = `${command} timed out after ${timeoutMs}ms\n`;
         const messageBuffer = Buffer.from(message, "utf8");
         stderrChunks.push(messageBuffer);
-        if (stderrPath) {
-          appendFile(stderrPath, messageBuffer).catch(() => {});
-        }
+        writeLiveStderr(messageBuffer);
         signalPidGroup(child.pid, "SIGTERM");
         setTimeout(() => {
-          if (!settled && isProcessAlive(child.pid)) {
+          if (!settled && !exited && isProcessAlive(child.pid)) {
             signalPidGroup(child.pid, "SIGKILL");
           }
         }, CANCEL_GRACE_MS).unref();
@@ -2533,15 +2555,14 @@ async function runCommand(
 
     child.stdout.on("data", (chunk) => {
       stdoutChunks.push(chunk);
-      if (stdoutPath) {
-        appendFile(stdoutPath, chunk).catch(() => {});
-      }
+      writeLiveStdout(chunk);
     });
     child.stderr.on("data", (chunk) => {
       stderrChunks.push(chunk);
-      if (stderrPath) {
-        appendFile(stderrPath, chunk).catch(() => {});
-      }
+      writeLiveStderr(chunk);
+    });
+    child.on("exit", () => {
+      exited = true;
     });
     child.on("error", (error) => {
       if (settled) {
@@ -2551,7 +2572,7 @@ async function runCommand(
       if (timeout) {
         clearTimeout(timeout);
       }
-      resolve({
+      settle({
         ok: false,
         status: error.code === "ENOENT" ? "missing" : "failed",
         stdout: Buffer.concat(stdoutChunks).toString("utf8"),
@@ -2572,7 +2593,7 @@ async function runCommand(
         clearTimeout(timeout);
       }
       const ok = okExitCodes.includes(exitCode);
-      resolve({
+      settle({
         ok,
         status: timedOut ? "timed_out" : ok ? "completed" : "failed",
         stdout: Buffer.concat(stdoutChunks).toString("utf8"),

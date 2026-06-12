@@ -66,6 +66,12 @@ async function makeFakeBin({ diff = "diff --git a/app.js b/app.js\n+buggy();\n" 
       "fi",
       "/bin/cat > /dev/null",
       "case \"$FAKE_CLAUDE_REVIEW\" in",
+      "  logs)",
+      "    for i in 1 2 3 4 5; do echo \"stderr-$i\" >&2; done",
+      "    printf '{\"structured_output\":'",
+      "    printf '{\"findings\":[],\"summary\":\"Chunked review done.\"}'",
+      "    printf '}'",
+      "    ;;",
       "  slow)",
       "    echo 'review started' >&2",
       "    sleep 2",
@@ -149,7 +155,7 @@ function startCli(args, { binDir, env = {} }) {
   };
 }
 
-async function waitForReviewJob(stateDir, predicate, timeoutMs = 1000) {
+async function waitForReviewJob(stateDir, predicate, timeoutMs = 5000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const result = await runCli(["status", "--state-dir", stateDir, "--json"], {
@@ -258,6 +264,35 @@ test("review times out stuck Claude calls and records the failed job", async () 
   assert.match(job.summary, /timed out after 100ms/);
   assert.equal(job.exitCode, null);
   assert.equal(job.signal, "SIGTERM");
+});
+
+test("review with timeout preserves successful output and ordered live logs", async () => {
+  const binDir = await makeFakeBin();
+  const stateDir = await mkdtemp(path.join(tmpdir(), "claude-review-state-"));
+
+  const result = await runCli(["review", "--state-dir", stateDir, "--timeout-ms", "5000", "--json"], {
+    binDir,
+    env: {
+      FAKE_CLAUDE_REVIEW: "logs"
+    }
+  });
+
+  assert.equal(result.exitCode, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.status, "completed");
+  assert.equal(payload.summary, "Chunked review done.");
+
+  const stdoutLog = await readFile(payload.job.logPath, "utf8");
+  assert.deepEqual(JSON.parse(stdoutLog), {
+    structured_output: {
+      findings: [],
+      summary: "Chunked review done."
+    }
+  });
+  assert.equal(
+    await readFile(payload.job.stderrPath, "utf8"),
+    "stderr-1\nstderr-2\nstderr-3\nstderr-4\nstderr-5\n"
+  );
 });
 
 test("review default includes staged and unstaged tracked changes", async () => {
