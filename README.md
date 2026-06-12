@@ -114,7 +114,7 @@ The user-facing skills are:
 - `claude-rescue`: delegate a foreground task to Claude Code through headless stream-json mode.
 - `claude-plan`: ask Claude for read-only planning, architecture, migration, or debugging strategy help.
 - `claude-ui`: ask Claude for frontend UI/design implementation, critique, or polish.
-- `claude-status`: list active and recent background Claude jobs.
+- `claude-status`: list active and recent Claude jobs.
 - `claude-result`: read the latest or selected Claude job result.
 - `claude-cancel`: cancel a running Claude job.
 - `claude-review`: run a structured, read-only Claude Code review.
@@ -220,7 +220,7 @@ Job state is stored under `PLUGIN_DATA`, `CODEX_PLUGIN_DATA`, `CLAUDE_PLUGIN_DAT
 The plugin does not manage Git worktrees itself; use normal Git/Codex worktree
 workflows around the plugin when needed.
 
-Human `status` and `result` output includes job id, status, Claude session id, model, effort, permission mode, isolation, exit information when relevant, model usage when Claude reports it, and useful follow-up commands. JSON output preserves existing fields and may include `modelUsage` and `nextCommands` on job objects when available.
+Human `status` and `result` output includes job id, status, Claude session id, model, effort, permission mode, isolation, exit information when relevant, model usage when Claude reports it, and useful follow-up commands. Rescue background jobs and foreground review jobs are persisted in plugin-owned state so long-running reviews can be inspected or cancelled from another shell. JSON output preserves existing fields and may include `modelUsage` and `nextCommands` on job objects when available.
 
 ## Local Install And Update
 
@@ -433,12 +433,18 @@ Include untracked files explicitly when needed:
 node scripts/claude-companion.mjs review --include-untracked
 ```
 
-Default review uses `git diff HEAD`, so it includes tracked staged and unstaged changes but not untracked files. Review uses Claude one-shot JSON output, `--permission-mode plan`, and `schemas/review-output.schema.json`. It returns structured findings and does not edit files.
+Default review uses `git diff HEAD`, so it includes tracked staged and unstaged changes but not untracked files. Review uses Claude one-shot JSON output, `--permission-mode plan`, and `schemas/review-output.schema.json`. It returns structured findings and does not edit files. Review writes a foreground job record plus stdout/stderr/result files under plugin state before invoking Claude, so `status`, `result`, and `cancel` can see a long-running or stuck review.
 
 Review refuses diffs larger than 200000 bytes by default so a single accidental large diff is not sent to Claude. Narrow the diff with `--base`, split the change, or explicitly raise the limit:
 
 ```bash
 node scripts/claude-companion.mjs review --base main --max-diff-bytes 500000
+```
+
+Review also has a timeout around the Claude subprocess. The default is 600000ms:
+
+```bash
+node scripts/claude-companion.mjs review --base main --timeout-ms 120000
 ```
 
 Run a stricter adversarial review with the same engine:

@@ -34,6 +34,13 @@ Detailed commands and pass/fail criteria are tracked in
 
 ## RC Validation Log
 
+- 2026-06-12: Review hang hardening implemented with fake-Claude regression
+  coverage.
+  - Foreground `review` now writes plugin-owned job state before spawning
+    Claude, so `status`, `result`, and `cancel` can see long-running reviews.
+  - Review stdout/stderr/result paths are persisted under plugin state.
+  - `--timeout-ms` caps the one-shot Claude review subprocess; timeout results
+    return JSON in `--json` mode and leave a failed job record with diagnostics.
 - 2026-06-12: Tiny model-routing smoke tests passed after explicit user
   approval, using `rescue --plan --effort low --json` and prompts that asked
   Claude to reply exactly `OK` without inspecting or modifying files.
