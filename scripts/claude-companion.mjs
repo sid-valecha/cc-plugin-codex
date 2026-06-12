@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { access, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { access, appendFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -78,6 +78,7 @@ const PLAN_PERMISSION_MODE = "plan";
 const WRITE_PERMISSION_MODE = "acceptEdits";
 const DANGER_PERMISSION_MODE = "bypassPermissions";
 const DEFAULT_REVIEW_MAX_DIFF_BYTES = 200000;
+const DEFAULT_REVIEW_TIMEOUT_MS = 600000;
 const VALID_EFFORT_LEVELS = new Set(["low", "medium", "high", "xhigh", "max"]);
 const VALID_PERMISSION_MODES = new Set([
   "plan",
@@ -172,6 +173,7 @@ function parseArgs(argv) {
     adversarial: false,
     includeUntracked: false,
     maxDiffBytes: DEFAULT_REVIEW_MAX_DIFF_BYTES,
+    timeoutMs: DEFAULT_REVIEW_TIMEOUT_MS,
     allowedTools: [],
     allowedToolsFile: null,
     trustLocalDev: false
@@ -292,6 +294,11 @@ function parseArgs(argv) {
       index += 1;
       continue;
     }
+    if (arg === "--timeout-ms" || arg === "--review-timeout-ms") {
+      options.timeoutMs = Number.parseInt(readOptionValue(argv, index, arg), 10);
+      index += 1;
+      continue;
+    }
     if (arg === "--bare") {
       options.bare = true;
       continue;
@@ -404,6 +411,7 @@ function usage() {
     "  --base <ref>            Review git diff from <ref>...HEAD.",
     "  --schema <path>         Override review JSON schema path.",
     "  --max-diff-bytes <n>    Refuse review diffs larger than n bytes. Defaults to 200000.",
+    "  --timeout-ms <n>        Maximum Claude review duration. Defaults to 600000.",
     "  --adversarial           Use the stricter adversarial review prompt.",
     "  --include-untracked     Include untracked files in default review diffs."
   ].join("\n");
@@ -2455,17 +2463,62 @@ function renderHumanPermissionsExport(result) {
   ].join("\n");
 }
 
-function runCommand(command, args, { cwd, input = null, okExitCodes = [0] } = {}) {
+async function runCommand(
+  command,
+  args,
+  {
+    cwd,
+    input = null,
+    okExitCodes = [0],
+    timeoutMs = null,
+    stdoutPath = null,
+    stderrPath = null,
+    onChildPid = null
+  } = {}
+) {
+  if (stdoutPath) {
+    await writeFile(stdoutPath, "", "utf8");
+  }
+  if (stderrPath) {
+    await writeFile(stderrPath, "", "utf8");
+  }
   return new Promise((resolve) => {
     const stdoutChunks = [];
     const stderrChunks = [];
     let child;
+    let settled = false;
+    let exited = false;
+    let timedOut = false;
+    let timeout = null;
+    let stdoutWrite = Promise.resolve();
+    let stderrWrite = Promise.resolve();
+
+    const writeLiveStdout = (chunk) => {
+      if (!stdoutPath) {
+        return;
+      }
+      stdoutWrite = stdoutWrite.then(() => appendFile(stdoutPath, chunk)).catch(() => {});
+    };
+    const writeLiveStderr = (chunk) => {
+      if (!stderrPath) {
+        return;
+      }
+      stderrWrite = stderrWrite.then(() => appendFile(stderrPath, chunk)).catch(() => {});
+    };
+    const settle = (result) => {
+      Promise.all([stdoutWrite, stderrWrite]).then(() => {
+        resolve(result);
+      });
+    };
 
     try {
       child = spawn(command, args, {
         cwd,
         stdio: [input === null ? "ignore" : "pipe", "pipe", "pipe"]
       });
+      if (typeof onChildPid === "function") {
+        onChildPid(child.pid);
+      }
     } catch (error) {
       resolve({
         ok: false,
@@ -2474,33 +2527,81 @@ function runCommand(command, args, { cwd, input = null, okExitCodes = [0] } = {}
         stderr: error.message,
         exitCode: null,
         signal: null,
+        timedOut: false,
+        timeoutMs,
         command: [command, ...args]
       });
       return;
     }
 
-    child.stdout.on("data", (chunk) => stdoutChunks.push(chunk));
-    child.stderr.on("data", (chunk) => stderrChunks.push(chunk));
+    if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+      timeout = setTimeout(() => {
+        if (settled || exited || !isProcessAlive(child.pid)) {
+          return;
+        }
+        timedOut = true;
+        const message = `${command} timed out after ${timeoutMs}ms\n`;
+        const messageBuffer = Buffer.from(message, "utf8");
+        stderrChunks.push(messageBuffer);
+        writeLiveStderr(messageBuffer);
+        signalPidGroup(child.pid, "SIGTERM");
+        setTimeout(() => {
+          if (!settled && !exited && isProcessAlive(child.pid)) {
+            signalPidGroup(child.pid, "SIGKILL");
+          }
+        }, CANCEL_GRACE_MS).unref();
+      }, timeoutMs);
+    }
+
+    child.stdout.on("data", (chunk) => {
+      stdoutChunks.push(chunk);
+      writeLiveStdout(chunk);
+    });
+    child.stderr.on("data", (chunk) => {
+      stderrChunks.push(chunk);
+      writeLiveStderr(chunk);
+    });
+    child.on("exit", () => {
+      exited = true;
+    });
     child.on("error", (error) => {
-      resolve({
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+      settle({
         ok: false,
         status: error.code === "ENOENT" ? "missing" : "failed",
         stdout: Buffer.concat(stdoutChunks).toString("utf8"),
         stderr: error.message,
         exitCode: null,
         signal: null,
+        timedOut,
+        timeoutMs,
         command: [command, ...args]
       });
     });
     child.on("close", (exitCode, signal) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (timeout) {
+        clearTimeout(timeout);
+      }
       const ok = okExitCodes.includes(exitCode);
-      resolve({
+      settle({
         ok,
-        status: ok ? "completed" : "failed",
+        status: timedOut ? "timed_out" : ok ? "completed" : "failed",
         stdout: Buffer.concat(stdoutChunks).toString("utf8"),
         stderr: Buffer.concat(stderrChunks).toString("utf8"),
         exitCode,
         signal,
+        timedOut,
+        timeoutMs,
         command: [command, ...args]
       });
     });
@@ -2635,7 +2736,17 @@ function buildReviewPrompt({ diff, base, mode = "review" }) {
   return basePrompt.join("\n");
 }
 
-async function runClaudeReview({ cwd, prompt, model, effort, schema }) {
+async function runClaudeReview({
+  cwd,
+  prompt,
+  model,
+  effort,
+  schema,
+  timeoutMs,
+  stdoutPath,
+  stderrPath,
+  onChildPid
+}) {
   const args = [
     "-p",
     "--output-format",
@@ -2649,7 +2760,13 @@ async function runClaudeReview({ cwd, prompt, model, effort, schema }) {
     ...(effort ? ["--effort", effort] : []),
     prompt
   ];
-  return runCommand("claude", args, { cwd });
+  return runCommand("claude", args, {
+    cwd,
+    timeoutMs,
+    stdoutPath,
+    stderrPath,
+    onChildPid
+  });
 }
 
 function parseReviewResponse(stdout) {
@@ -2715,10 +2832,71 @@ function validateFinding(finding, index, errors) {
   }
 }
 
+function normalizeReviewTimeoutMs(timeoutMs) {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    throw new Error("--timeout-ms must be a positive integer");
+  }
+  return timeoutMs;
+}
+
+async function createReviewJob({
+  stateDir,
+  mode,
+  cwd,
+  base,
+  model,
+  effort,
+  schemaPath,
+  diffCommand,
+  includeUntracked,
+  untrackedFiles,
+  diffBytes,
+  maxDiffBytes,
+  timeoutMs
+}) {
+  await ensureStateDir(stateDir);
+  const jobId = `${mode}-${Date.now()}-${randomUUID().slice(0, 8)}`;
+  const now = new Date().toISOString();
+  const paths = buildJobPaths(stateDir, jobId);
+  const job = {
+    id: jobId,
+    kind: mode,
+    status: "running",
+    cwd,
+    workspaceRoot: cwd,
+    claudeSessionId: null,
+    runnerPid: process.pid,
+    childPid: null,
+    model,
+    effort,
+    permissionMode: PLAN_PERMISSION_MODE,
+    isolation: "standard",
+    logPath: paths.logPath,
+    stderrPath: paths.stderrPath,
+    resultPath: paths.resultPath,
+    sessionPath: paths.sessionPath,
+    createdAt: now,
+    updatedAt: now,
+    exitCode: null,
+    signal: null,
+    summary: "Claude review is running",
+    base,
+    schemaPath,
+    diffCommand,
+    includeUntracked,
+    untrackedFiles,
+    diffBytes,
+    maxDiffBytes,
+    timeoutMs
+  };
+  return upsertJob(stateDir, job);
+}
+
 async function runReview(options) {
   const cwd = await resolveCwd(options.cwd);
   const model = normalizeModel(options.model);
   const effort = normalizeEffort(options.effort);
+  const timeoutMs = normalizeReviewTimeoutMs(options.timeoutMs);
   const mode = options.adversarial ? "adversarial-review" : "review";
   const maxDiffBytes =
     Number.isFinite(options.maxDiffBytes) && options.maxDiffBytes > 0
@@ -2762,18 +2940,117 @@ async function runReview(options) {
     base: options.base,
     mode
   });
+  const stateDir = resolveStateDir(options.stateDir);
+  const job = await createReviewJob({
+    stateDir,
+    mode,
+    cwd,
+    base: options.base,
+    model,
+    effort,
+    schemaPath,
+    diffCommand: diffResult.command,
+    includeUntracked: options.includeUntracked,
+    untrackedFiles: diffResult.untrackedFiles,
+    diffBytes,
+    maxDiffBytes,
+    timeoutMs
+  });
   const invocation = await runClaudeReview({
     cwd,
     prompt,
     model,
     effort,
-    schema
+    schema,
+    timeoutMs,
+    stdoutPath: job.logPath,
+    stderrPath: job.stderrPath,
+    onChildPid: (childPid) => {
+      patchJob(stateDir, job.id, { childPid }).catch(() => {});
+    }
   });
+  const latestJob = await findJob(stateDir, job.id);
+  const cancelled = latestJob?.status === "cancelling" || latestJob?.status === "cancelled";
   if (!invocation.ok) {
-    throw new Error(`Claude review failed: ${summarizeClaudeFailure(invocation)}`);
+    const summary = cancelled
+      ? "Cancelled by user"
+      : summarizeClaudeFailure(invocation);
+    const status = cancelled ? "cancelled" : "failed";
+    const failedJob = await patchJob(stateDir, job.id, {
+      status,
+      childPid: null,
+      exitCode: invocation.exitCode,
+      signal: invocation.signal,
+      summary
+    });
+    await writeFile(job.resultPath, formatReviewFailure(invocation, summary), "utf8");
+    const decoratedJob = await decorateJobForOutput(failedJob);
+    if (invocation.timedOut) {
+      return {
+        ok: false,
+        status: "timed_out",
+        mode,
+        cwd,
+        base: options.base,
+        model,
+        effort,
+        permissionMode: PLAN_PERMISSION_MODE,
+        schemaPath,
+        diffCommand: diffResult.command,
+        includeUntracked: options.includeUntracked,
+        untrackedFiles: diffResult.untrackedFiles,
+        diffBytes,
+        maxDiffBytes,
+        timeoutMs,
+        command: invocation.command,
+        summary,
+        findings: [],
+        job: decoratedJob
+      };
+    }
+    if (cancelled) {
+      return {
+        ok: false,
+        status,
+        mode,
+        cwd,
+        base: options.base,
+        model,
+        effort,
+        permissionMode: PLAN_PERMISSION_MODE,
+        schemaPath,
+        diffCommand: diffResult.command,
+        includeUntracked: options.includeUntracked,
+        untrackedFiles: diffResult.untrackedFiles,
+        diffBytes,
+        maxDiffBytes,
+        timeoutMs,
+        command: invocation.command,
+        summary,
+        findings: [],
+        job: decoratedJob
+      };
+    }
+    throw new Error(`Claude review failed: ${summary}`);
   }
-  const parsed = parseReviewResponse(invocation.stdout);
-  return {
+  let parsed;
+  try {
+    parsed = parseReviewResponse(invocation.stdout);
+  } catch (error) {
+    const summary = error instanceof Error ? error.message : String(error);
+    await patchJob(stateDir, job.id, {
+      status: "failed",
+      childPid: null,
+      exitCode: invocation.exitCode,
+      signal: invocation.signal,
+      summary
+    });
+    await writeFile(job.resultPath, formatReviewFailure(invocation, summary), "utf8");
+    throw error;
+  }
+  const claudeSessionId = parsed.raw.session_id || parsed.raw.sessionId || null;
+  const modelUsage = parsed.raw.modelUsage || null;
+  const result = {
     ok: true,
     status: "completed",
     mode,
@@ -2788,14 +3065,45 @@ async function runReview(options) {
     untrackedFiles: diffResult.untrackedFiles,
     diffBytes,
     maxDiffBytes,
+    timeoutMs,
     command: invocation.command,
     findings: parsed.structuredOutput.findings,
     summary: parsed.structuredOutput.summary,
     raw: parsed.raw
   };
+  await writeFile(job.resultPath, `${renderHumanReview(result)}\n`, "utf8");
+  await writeFile(
+    job.sessionPath,
+    `${JSON.stringify(
+      {
+        ...(claudeSessionId ? { claudeSessionId } : {}),
+        raw: parsed.raw,
+        ...(modelUsage ? { modelUsage } : {})
+      },
+      null,
+      2
+    )}\n`,
+    "utf8"
+  );
+  const completedJob = await patchJob(stateDir, job.id, {
+    status: "completed",
+    childPid: null,
+    claudeSessionId,
+    exitCode: invocation.exitCode,
+    signal: invocation.signal,
+    summary: summarizeResult(parsed.structuredOutput.summary),
+    ...(modelUsage ? { modelUsage } : {})
+  });
+  return {
+    ...result,
+    job: await decorateJobForOutput(completedJob)
+  };
 }
 
 function summarizeClaudeFailure(invocation) {
+  if (invocation.timedOut) {
+    return `Claude review timed out after ${invocation.timeoutMs}ms`;
+  }
   try {
     const payload = JSON.parse(invocation.stdout);
     if (typeof payload.result === "string" && payload.result.trim()) {
@@ -2808,6 +3116,20 @@ function summarizeClaudeFailure(invocation) {
     // Fall through to plain output summaries.
   }
   return firstLine(invocation.stderr) || firstLine(invocation.stdout) || "unknown Claude error";
+}
+
+function formatReviewFailure(invocation, summary) {
+  const lines = ["Claude review failed before producing valid structured output.", "", `Reason: ${summary}`];
+  if (invocation.exitCode !== null) {
+    lines.push(`Exit code: ${invocation.exitCode}`);
+  }
+  if (invocation.signal) {
+    lines.push(`Signal: ${invocation.signal}`);
+  }
+  if (invocation.stderr.trim()) {
+    lines.push("", "Claude stderr:", invocation.stderr.trim());
+  }
+  return `${lines.join("\n")}\n`;
 }
 
 function renderHumanReview(result) {

@@ -28,6 +28,9 @@ through Codex-native skills and a deterministic Node entry point.
   works in normal local development.
 - Opt-in `--bare` mode for strict isolation with bare-compatible auth.
 - Foreground and background rescue jobs with durable plugin-owned job state.
+- Foreground structured review jobs with durable plugin-owned job state, live
+  stdout/stderr/result files, cancellation visibility, and subprocess timeout
+  handling.
 - `--wait` for background jobs.
 - `--resume` and `--fresh` rescue ergonomics.
 - Rich human `status` and `result` rendering with session id, model, effort,

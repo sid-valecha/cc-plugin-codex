@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -55,6 +56,7 @@ function runCli(args, { binDir, env = {}, stdin = "" } = {}) {
       cwd: ROOT,
       env: {
         ...process.env,
+        CODEX_PLUGIN_DATA: mkdtempSync(path.join(tmpdir(), "claude-hook-state-")),
         ...env,
         PATH: binDir ? `${binDir}${path.delimiter}${process.env.PATH}` : process.env.PATH
       },

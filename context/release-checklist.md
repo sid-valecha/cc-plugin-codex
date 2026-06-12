@@ -184,6 +184,9 @@ Pass criteria:
 - The output includes a Claude session id where the command type supports it.
 - `raw.modelUsage`, `stream.modelUsage`, or job `modelUsage` records the actual
   routed Claude model.
+- Structured review creates a visible job record with log, stderr, and result
+  paths while Claude is running, and `--timeout-ms` produces a failed job record
+  instead of hanging indefinitely.
 - Read-only smokes do not modify fixture files.
 - Review smoke reports the seeded issue when using a fixture with a known diff.
 

@@ -46,10 +46,11 @@ Useful options:
 - `--effort <level>` to pass Claude Code effort: `low`, `medium`, `high`, `xhigh`, or `max`.
 - `--schema <path>` to override the review JSON schema.
 - `--max-diff-bytes <n>` to raise or lower the single-review diff limit. The default is 200000 bytes.
+- `--timeout-ms <n>` to cap the Claude review subprocess runtime. The default is 600000 milliseconds.
 - `--adversarial` to use a stricter prompt that challenges assumptions and looks for subtle concrete failure modes.
 - `--include-untracked` to explicitly include untracked files in the default review diff.
 
-Default review includes tracked staged and unstaged changes. It does not include untracked files unless `--include-untracked` is set. Review always uses Claude Code `--permission-mode plan` and one-shot JSON output. It should not edit files.
+Default review includes tracked staged and unstaged changes. It does not include untracked files unless `--include-untracked` is set. Review always uses Claude Code `--permission-mode plan` and one-shot JSON output. It should not edit files. Foreground review commands create plugin-owned job state and log files before invoking Claude, so use `claude-status`, `claude-result`, or `claude-cancel` if a review is still running or needs to be inspected from another shell.
 
 Model guidance:
 

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
 import { chmod, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -65,6 +66,17 @@ async function makeFakeBin({ diff = "diff --git a/app.js b/app.js\n+buggy();\n" 
       "fi",
       "/bin/cat > /dev/null",
       "case \"$FAKE_CLAUDE_REVIEW\" in",
+      "  logs)",
+      "    for i in 1 2 3 4 5; do echo \"stderr-$i\" >&2; done",
+      "    printf '{\"structured_output\":'",
+      "    printf '{\"findings\":[],\"summary\":\"Chunked review done.\"}'",
+      "    printf '}'",
+      "    ;;",
+      "  slow)",
+      "    echo 'review started' >&2",
+      "    sleep 2",
+      "    echo '{\"structured_output\":{\"findings\":[],\"summary\":\"Slow review done.\"}}'",
+      "    ;;",
       "  null)",
       "    echo '{\"structured_output\":null}'",
       "    ;;",
@@ -92,6 +104,7 @@ function runCli(args, { binDir, env = {} }) {
       cwd: ROOT,
       env: {
         ...process.env,
+        CODEX_PLUGIN_DATA: mkdtempSync(path.join(tmpdir(), "claude-review-state-")),
         ...env,
         PATH: `${binDir}${path.delimiter}${process.env.PATH}`
       },
@@ -110,6 +123,55 @@ function runCli(args, { binDir, env = {} }) {
       resolve({ exitCode, stdout, stderr });
     });
   });
+}
+
+function startCli(args, { binDir, env = {} }) {
+  const child = spawn(process.execPath, [SCRIPT, ...args], {
+    cwd: ROOT,
+    env: {
+      ...process.env,
+      CODEX_PLUGIN_DATA: mkdtempSync(path.join(tmpdir(), "claude-review-state-")),
+      ...env,
+      PATH: `${binDir}${path.delimiter}${process.env.PATH}`
+    },
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  let stdout = "";
+  let stderr = "";
+  child.stdout.on("data", (chunk) => {
+    stdout += chunk;
+  });
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk;
+  });
+  return {
+    child,
+    done: new Promise((resolve, reject) => {
+      child.on("error", reject);
+      child.on("close", (exitCode) => {
+        resolve({ exitCode, stdout, stderr });
+      });
+    })
+  };
+}
+
+async function waitForReviewJob(stateDir, predicate, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const result = await runCli(["status", "--state-dir", stateDir, "--json"], {
+      binDir: path.dirname(process.execPath)
+    });
+    assert.equal(result.exitCode, 0, result.stderr);
+    const payload = JSON.parse(result.stdout);
+    const job = payload.jobs.find((candidate) => candidate.kind === "review" || candidate.kind === "adversarial-review");
+    if (job && predicate(job)) {
+      return job;
+    }
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
+  }
+  throw new Error("Timed out waiting for running review job");
 }
 
 test("review returns structured findings from fake Claude", async () => {
@@ -149,6 +211,88 @@ test("review returns structured findings from fake Claude", async () => {
   ]);
   assert.match(await readFile(promptFile, "utf8"), /Review the diff from main\.\.\.HEAD and return structured output/);
   assert.match(await readFile(promptFile, "utf8"), /buggy/);
+});
+
+test("review persists a running job while Claude is still working", async () => {
+  const binDir = await makeFakeBin();
+  const stateDir = await mkdtemp(path.join(tmpdir(), "claude-review-state-"));
+  const started = startCli(["review", "--state-dir", stateDir, "--json"], {
+    binDir,
+    env: {
+      FAKE_CLAUDE_REVIEW: "slow"
+    }
+  });
+
+  const runningJob = await waitForReviewJob(
+    stateDir,
+    (job) => job.status === "running" && job.stderrPath && job.resultPath
+  );
+  assert.equal(runningJob.model, "sonnet");
+  assert.equal(runningJob.permissionMode, "plan");
+
+  const result = await started.done;
+  assert.equal(result.exitCode, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.job.id, runningJob.id);
+  assert.equal(payload.status, "completed");
+});
+
+test("review times out stuck Claude calls and records the failed job", async () => {
+  const binDir = await makeFakeBin();
+  const stateDir = await mkdtemp(path.join(tmpdir(), "claude-review-state-"));
+
+  const result = await runCli(["review", "--state-dir", stateDir, "--timeout-ms", "100", "--json"], {
+    binDir,
+    env: {
+      FAKE_CLAUDE_REVIEW: "slow"
+    }
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.stderr, "");
+  const timeoutPayload = JSON.parse(result.stdout);
+  assert.equal(timeoutPayload.ok, false);
+  assert.equal(timeoutPayload.status, "timed_out");
+  assert.match(timeoutPayload.summary, /timed out after 100ms/);
+  assert.equal(timeoutPayload.job.status, "failed");
+
+  const status = await runCli(["status", "--state-dir", stateDir, "--json"], { binDir });
+  assert.equal(status.exitCode, 0, status.stderr);
+  const payload = JSON.parse(status.stdout);
+  const job = payload.jobs.find((candidate) => candidate.kind === "review");
+  assert.equal(job.status, "failed");
+  assert.match(job.summary, /timed out after 100ms/);
+  assert.equal(job.exitCode, null);
+  assert.equal(job.signal, "SIGTERM");
+});
+
+test("review with timeout preserves successful output and ordered live logs", async () => {
+  const binDir = await makeFakeBin();
+  const stateDir = await mkdtemp(path.join(tmpdir(), "claude-review-state-"));
+
+  const result = await runCli(["review", "--state-dir", stateDir, "--timeout-ms", "5000", "--json"], {
+    binDir,
+    env: {
+      FAKE_CLAUDE_REVIEW: "logs"
+    }
+  });
+
+  assert.equal(result.exitCode, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.status, "completed");
+  assert.equal(payload.summary, "Chunked review done.");
+
+  const stdoutLog = await readFile(payload.job.logPath, "utf8");
+  assert.deepEqual(JSON.parse(stdoutLog), {
+    structured_output: {
+      findings: [],
+      summary: "Chunked review done."
+    }
+  });
+  assert.equal(
+    await readFile(payload.job.stderrPath, "utf8"),
+    "stderr-1\nstderr-2\nstderr-3\nstderr-4\nstderr-5\n"
+  );
 });
 
 test("review default includes staged and unstaged tracked changes", async () => {
