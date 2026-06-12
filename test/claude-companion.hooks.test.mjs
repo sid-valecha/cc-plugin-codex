@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 const SCRIPT = path.join(ROOT, "scripts", "claude-companion.mjs");
+const HOOKS_JSON = path.join(ROOT, "hooks", "hooks.json");
 
 async function makeExecutable(filePath, contents) {
   await writeFile(filePath, contents, "utf8");
@@ -74,6 +75,118 @@ function runCli(args, { binDir, env = {}, stdin = "" } = {}) {
     child.stdin.end(stdin);
   });
 }
+
+async function bundledStopHookCommand() {
+  const payload = JSON.parse(await readFile(HOOKS_JSON, "utf8"));
+  return payload.hooks.Stop[0].hooks[0].command;
+}
+
+async function runHookConfigCommand({ cwd, env = {} } = {}) {
+  const command = await bundledStopHookCommand();
+  const {
+    CLAUDE_COMPANION_PLUGIN_ROOT,
+    CLAUDE_COMPANION_STOP_REVIEW,
+    CLAUDE_COMPANION_STOP_REVIEW_BLOCKING,
+    ...baseEnv
+  } = process.env;
+  return new Promise((resolve, reject) => {
+    const child = spawn(awaitableShell(), ["-c", command], {
+      cwd,
+      env: {
+        ...baseEnv,
+        ...env
+      },
+      stdio: ["pipe", "pipe", "pipe"]
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", reject);
+    child.on("close", (exitCode) => {
+      resolve({ exitCode, stdout, stderr });
+    });
+  });
+}
+
+function awaitableShell() {
+  return process.env.SHELL || "/bin/sh";
+}
+
+test("bundled Stop hook config does not resolve helper from the current workspace", async () => {
+  const workDir = await mkdtemp(path.join(tmpdir(), "claude-hook-config-cwd-"));
+  const markerFile = path.join(workDir, "cwd-hook-ran.txt");
+  await mkdir(path.join(workDir, "hooks"), { recursive: true });
+  await makeExecutable(
+    path.join(workDir, "hooks", "claude-stop-review.mjs"),
+    [
+      "#!/usr/bin/env node",
+      "import { writeFileSync } from 'node:fs';",
+      `writeFileSync(${JSON.stringify(markerFile)}, 'ran');`,
+      ""
+    ].join("\n")
+  );
+
+  const result = await runHookConfigCommand({ cwd: workDir });
+
+  assert.equal(result.exitCode, 0, result.stderr);
+  await assert.rejects(readFile(markerFile, "utf8"), { code: "ENOENT" });
+});
+
+test("bundled Stop hook config ignores relative plugin roots", async () => {
+  const workDir = await mkdtemp(path.join(tmpdir(), "claude-hook-config-relative-"));
+  const markerFile = path.join(workDir, "relative-hook-ran.txt");
+  await mkdir(path.join(workDir, "hooks"), { recursive: true });
+  await makeExecutable(
+    path.join(workDir, "hooks", "claude-stop-review.mjs"),
+    [
+      "#!/usr/bin/env node",
+      "import { writeFileSync } from 'node:fs';",
+      `writeFileSync(${JSON.stringify(markerFile)}, 'ran');`,
+      ""
+    ].join("\n")
+  );
+
+  const result = await runHookConfigCommand({
+    cwd: workDir,
+    env: {
+      CLAUDE_COMPANION_PLUGIN_ROOT: "."
+    }
+  });
+
+  assert.equal(result.exitCode, 0, result.stderr);
+  await assert.rejects(readFile(markerFile, "utf8"), { code: "ENOENT" });
+});
+
+test("bundled Stop hook config runs helper from an absolute plugin root", async () => {
+  const workDir = await mkdtemp(path.join(tmpdir(), "claude-hook-config-work-"));
+  const pluginRoot = await mkdtemp(path.join(tmpdir(), "claude-hook-config-plugin-"));
+  const markerFile = path.join(pluginRoot, "absolute-hook-ran.txt");
+  await mkdir(path.join(pluginRoot, "hooks"), { recursive: true });
+  await makeExecutable(
+    path.join(pluginRoot, "hooks", "claude-stop-review.mjs"),
+    [
+      "#!/usr/bin/env node",
+      "import { writeFileSync } from 'node:fs';",
+      `writeFileSync(${JSON.stringify(markerFile)}, 'ran');`,
+      ""
+    ].join("\n")
+  );
+
+  const result = await runHookConfigCommand({
+    cwd: workDir,
+    env: {
+      CLAUDE_COMPANION_PLUGIN_ROOT: pluginRoot
+    }
+  });
+
+  assert.equal(result.exitCode, 0, result.stderr);
+  assert.equal(await readFile(markerFile, "utf8"), "ran");
+});
 
 test("hook-stop-review is inert until explicitly enabled", async () => {
   const workDir = await mkdtemp(path.join(tmpdir(), "claude-hook-cwd-"));

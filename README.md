@@ -396,7 +396,7 @@ Hook trust:
 
 - The Stop hook is inert until explicitly enabled.
 - Codex still requires non-managed hooks to be reviewed and trusted before they can run.
-- If the hook runs from another workspace, set `CLAUDE_COMPANION_PLUGIN_ROOT=/absolute/path/to/cc-plugin-codex`.
+- Before launching Codex with the bundled hook config, set `CLAUDE_COMPANION_PLUGIN_ROOT=/absolute/path/to/cc-plugin-codex`.
 - Enable the hook with `CLAUDE_COMPANION_STOP_REVIEW=1` or a per-repo `.codex/claude-stop-review.enabled` marker.
 
 Sandbox and network prompts:
@@ -426,7 +426,13 @@ Review a branch diff:
 node scripts/claude-companion.mjs review --base main
 ```
 
-Review uses `git diff`, Claude one-shot JSON output, `--permission-mode plan`, and `schemas/review-output.schema.json`. It returns structured findings and does not edit files.
+Include untracked files explicitly when needed:
+
+```bash
+node scripts/claude-companion.mjs review --include-untracked
+```
+
+Default review uses `git diff HEAD`, so it includes tracked staged and unstaged changes but not untracked files. Review uses Claude one-shot JSON output, `--permission-mode plan`, and `schemas/review-output.schema.json`. It returns structured findings and does not edit files.
 
 Review refuses diffs larger than 200000 bytes by default so a single accidental large diff is not sent to Claude. Narrow the diff with `--base`, split the change, or explicitly raise the limit:
 
@@ -450,16 +456,16 @@ node scripts/claude-companion.mjs review --adversarial --base main
 
 The plugin bundles `hooks/hooks.json` with a Codex `Stop` hook. Codex requires non-managed hooks to be reviewed and trusted with `/hooks` before they run.
 
-The hook is installed but inert by default, so trusting it does not automatically send prompts or diffs to Claude. Enable it in a shell before launching Codex:
-
-```bash
-export CLAUDE_COMPANION_STOP_REVIEW=1
-```
-
-If Codex invokes plugin-bundled hooks from a workspace other than this plugin root, also point the hook at the plugin checkout:
+The hook is installed but inert by default, so trusting it does not automatically send prompts or diffs to Claude. First point the bundled hook config at this plugin using an absolute path before launching Codex:
 
 ```bash
 export CLAUDE_COMPANION_PLUGIN_ROOT=/absolute/path/to/cc-plugin-codex
+```
+
+Then enable review in the shell before launching Codex:
+
+```bash
+export CLAUDE_COMPANION_STOP_REVIEW=1
 ```
 
 Or enable it per repository by creating:
@@ -468,6 +474,8 @@ Or enable it per repository by creating:
 mkdir -p .codex
 touch .codex/claude-stop-review.enabled
 ```
+
+The per-repository marker enables review after the hook helper is located; it does not replace `CLAUDE_COMPANION_PLUGIN_ROOT`.
 
 When enabled, the hook runs a read-only Claude review at turn stop using `--permission-mode plan`. By default it reports findings without blocking Codex. To make high or critical findings block the hook command, opt in explicitly:
 

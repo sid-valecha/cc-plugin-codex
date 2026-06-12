@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { access, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -90,11 +90,14 @@ const VALID_PERMISSION_MODES = new Set([
 ]);
 const DEFAULT_STATE_DIR = path.join(homedir(), ".codex", "plugins", "data", "claude-code");
 const JOBS_FILE = "jobs.json";
+const JOBS_LOCK_DIR = `${JOBS_FILE}.lock`;
 const PERMISSIONS_DIR = "permissions";
 const CANCEL_GRACE_MS = 500;
 const STALE_RUNNING_GRACE_MS = 10000;
 const DEFAULT_WAIT_TIMEOUT_MS = 300000;
 const WAIT_POLL_INTERVAL_MS = 100;
+const JOBS_LOCK_RETRY_MS = 10;
+const JOBS_LOCK_TIMEOUT_MS = 5000;
 const TERMINAL_JOB_STATUSES = new Set(["completed", "failed", "cancelled", "permission_blocked"]);
 const RESUMABLE_JOB_STATUSES = new Set(["completed", "failed"]);
 const STOP_REVIEW_ENABLE_FILE = path.join(".codex", "claude-stop-review.enabled");
@@ -168,6 +171,7 @@ function parseArgs(argv) {
     waitTimeoutMs: DEFAULT_WAIT_TIMEOUT_MS,
     bare: false,
     adversarial: false,
+    includeUntracked: false,
     maxDiffBytes: DEFAULT_REVIEW_MAX_DIFF_BYTES,
     allowedTools: [],
     allowedToolsFile: null,
@@ -311,6 +315,10 @@ function parseArgs(argv) {
       options.adversarial = true;
       continue;
     }
+    if (arg === "--include-untracked") {
+      options.includeUntracked = true;
+      continue;
+    }
     if (command === null) {
       command = arg;
       continue;
@@ -397,7 +405,8 @@ function usage() {
     "  --base <ref>            Review git diff from <ref>...HEAD.",
     "  --schema <path>         Override review JSON schema path.",
     "  --max-diff-bytes <n>    Refuse review diffs larger than n bytes. Defaults to 200000.",
-    "  --adversarial           Use the stricter adversarial review prompt."
+    "  --adversarial           Use the stricter adversarial review prompt.",
+    "  --include-untracked     Include untracked files in default review diffs."
   ].join("\n");
 }
 
@@ -1480,6 +1489,36 @@ function jobsPath(stateDir) {
   return path.join(stateDir, JOBS_FILE);
 }
 
+function jobsLockPath(stateDir) {
+  return path.join(stateDir, JOBS_LOCK_DIR);
+}
+
+async function withJobsLock(stateDir, operation) {
+  await ensureStateDir(stateDir);
+  const lockPath = jobsLockPath(stateDir);
+  const deadline = Date.now() + JOBS_LOCK_TIMEOUT_MS;
+  while (true) {
+    try {
+      await mkdir(lockPath);
+      break;
+    } catch (error) {
+      if (error.code !== "EEXIST") {
+        throw error;
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(`Timed out waiting for job state lock: ${lockPath}`);
+      }
+      await delay(JOBS_LOCK_RETRY_MS);
+    }
+  }
+
+  try {
+    return await operation();
+  } finally {
+    await rm(lockPath, { recursive: true, force: true });
+  }
+}
+
 function permissionsDir(stateDir) {
   return path.join(stateDir, PERMISSIONS_DIR);
 }
@@ -1509,33 +1548,37 @@ async function writeJobs(stateDir, jobs) {
 }
 
 async function upsertJob(stateDir, job) {
-  const jobs = await readJobs(stateDir);
-  const index = jobs.findIndex((candidate) => candidate.id === job.id);
-  if (index === -1) {
-    jobs.push(job);
-  } else {
-    jobs[index] = {
-      ...jobs[index],
-      ...job
-    };
-  }
-  await writeJobs(stateDir, jobs);
-  return jobs[index === -1 ? jobs.length - 1 : index];
+  return withJobsLock(stateDir, async () => {
+    const jobs = await readJobs(stateDir);
+    const index = jobs.findIndex((candidate) => candidate.id === job.id);
+    if (index === -1) {
+      jobs.push(job);
+    } else {
+      jobs[index] = {
+        ...jobs[index],
+        ...job
+      };
+    }
+    await writeJobs(stateDir, jobs);
+    return jobs[index === -1 ? jobs.length - 1 : index];
+  });
 }
 
 async function patchJob(stateDir, jobId, patch) {
-  const jobs = await readJobs(stateDir);
-  const index = jobs.findIndex((candidate) => candidate.id === jobId);
-  if (index === -1) {
-    throw new Error(`Job not found: ${jobId}`);
-  }
-  jobs[index] = {
-    ...jobs[index],
-    ...patch,
-    updatedAt: new Date().toISOString()
-  };
-  await writeJobs(stateDir, jobs);
-  return jobs[index];
+  return withJobsLock(stateDir, async () => {
+    const jobs = await readJobs(stateDir);
+    const index = jobs.findIndex((candidate) => candidate.id === jobId);
+    if (index === -1) {
+      throw new Error(`Job not found: ${jobId}`);
+    }
+    jobs[index] = {
+      ...jobs[index],
+      ...patch,
+      updatedAt: new Date().toISOString()
+    };
+    await writeJobs(stateDir, jobs);
+    return jobs[index];
+  });
 }
 
 async function findJob(stateDir, jobId) {
@@ -1887,9 +1930,22 @@ function selectJob(jobs, jobId, preferredStatus = null) {
 }
 
 async function refreshStaleJobs(stateDir, jobs) {
+  const snapshot = refreshStaleJobList(jobs, Date.now());
+  if (!snapshot.changed) {
+    return snapshot.jobs;
+  }
+  return withJobsLock(stateDir, async () => {
+    const current = refreshStaleJobList(await readJobs(stateDir), Date.now());
+    if (current.changed) {
+      await writeJobs(stateDir, current.jobs);
+    }
+    return current.jobs;
+  });
+}
+
+function refreshStaleJobList(jobs, now) {
   let changed = false;
-  const now = Date.now();
-  const refreshed = jobs.map((job) => {
+  const refreshedJobs = jobs.map((job) => {
     const updatedAtMs = Date.parse(job.updatedAt);
     const isPastGrace =
       Number.isNaN(updatedAtMs) || now - updatedAtMs > STALE_RUNNING_GRACE_MS;
@@ -1909,10 +1965,10 @@ async function refreshStaleJobs(stateDir, jobs) {
     }
     return job;
   });
-  if (changed) {
-    await writeJobs(stateDir, refreshed);
-  }
-  return refreshed;
+  return {
+    changed,
+    jobs: refreshedJobs
+  };
 }
 
 function isProcessAlive(pid) {
@@ -2401,7 +2457,7 @@ function renderHumanPermissionsExport(result) {
   ].join("\n");
 }
 
-function runCommand(command, args, { cwd, input = null } = {}) {
+function runCommand(command, args, { cwd, input = null, okExitCodes = [0] } = {}) {
   return new Promise((resolve) => {
     const stdoutChunks = [];
     const stderrChunks = [];
@@ -2439,9 +2495,10 @@ function runCommand(command, args, { cwd, input = null } = {}) {
       });
     });
     child.on("close", (exitCode, signal) => {
+      const ok = okExitCodes.includes(exitCode);
       resolve({
-        ok: exitCode === 0,
-        status: exitCode === 0 ? "completed" : "failed",
+        ok,
+        status: ok ? "completed" : "failed",
         stdout: Buffer.concat(stdoutChunks).toString("utf8"),
         stderr: Buffer.concat(stderrChunks).toString("utf8"),
         exitCode,
@@ -2460,16 +2517,87 @@ function defaultReviewSchemaPath() {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "schemas", "review-output.schema.json");
 }
 
-async function collectGitDiff({ cwd, base }) {
-  const args = base ? ["diff", "--no-ext-diff", `${base}...HEAD`] : ["diff", "--no-ext-diff"];
-  const result = await runCommand("git", args, { cwd });
-  if (!result.ok) {
-    throw new Error(`Failed to collect git diff: ${firstLine(result.stderr) || firstLine(result.stdout)}`);
+async function collectGitDiff({ cwd, base, includeUntracked = false }) {
+  const result = await collectTrackedGitDiff({ cwd, base });
+  if (!includeUntracked) {
+    return {
+      diff: result.stdout,
+      command: result.command,
+      untrackedFiles: []
+    };
+  }
+
+  const untrackedFiles = await collectUntrackedFiles(cwd);
+  const untrackedDiffs = [];
+  for (const file of untrackedFiles) {
+    const diff = await collectUntrackedFileDiff(cwd, file);
+    if (diff.trim()) {
+      untrackedDiffs.push(diff);
+    }
   }
   return {
-    diff: result.stdout,
-    command: result.command
+    diff: joinDiffChunks([result.stdout, ...untrackedDiffs]),
+    command: result.command,
+    untrackedFiles
   };
+}
+
+async function collectTrackedGitDiff({ cwd, base }) {
+  const args = base ? ["diff", "--no-ext-diff", `${base}...HEAD`] : ["diff", "--no-ext-diff", "HEAD"];
+  const result = await runCommand("git", args, { cwd });
+  if (result.ok) {
+    return result;
+  }
+  if (base || !isMissingHeadDiff(result)) {
+    throw new Error(`Failed to collect git diff: ${firstLine(result.stderr) || firstLine(result.stdout)}`);
+  }
+
+  const cached = await runCommand("git", ["diff", "--no-ext-diff", "--cached"], { cwd });
+  if (!cached.ok) {
+    throw new Error(`Failed to collect staged git diff: ${firstLine(cached.stderr) || firstLine(cached.stdout)}`);
+  }
+  const unstaged = await runCommand("git", ["diff", "--no-ext-diff"], { cwd });
+  if (!unstaged.ok) {
+    throw new Error(`Failed to collect unstaged git diff: ${firstLine(unstaged.stderr) || firstLine(unstaged.stdout)}`);
+  }
+  return {
+    ...result,
+    ok: true,
+    status: "completed",
+    stdout: joinDiffChunks([cached.stdout, unstaged.stdout]),
+    stderr: "",
+    fallbackCommands: [cached.command, unstaged.command]
+  };
+}
+
+function isMissingHeadDiff(result) {
+  return /\b(ambiguous argument 'HEAD'|unknown revision|bad revision 'HEAD')\b/i.test(
+    `${result.stderr}\n${result.stdout}`
+  );
+}
+
+function joinDiffChunks(chunks) {
+  return chunks.filter((chunk) => chunk && chunk.trim()).join("\n");
+}
+
+async function collectUntrackedFiles(cwd) {
+  const result = await runCommand("git", ["ls-files", "--others", "--exclude-standard", "-z"], { cwd });
+  if (!result.ok) {
+    throw new Error(`Failed to collect untracked files: ${firstLine(result.stderr) || firstLine(result.stdout)}`);
+  }
+  return result.stdout.split("\0").filter(Boolean);
+}
+
+async function collectUntrackedFileDiff(cwd, file) {
+  const result = await runCommand(
+    "git",
+    ["diff", "--no-ext-diff", "--no-index", "--", "/dev/null", file],
+    { cwd, okExitCodes: [0, 1] }
+  );
+  if (!result.ok) {
+    throw new Error(`Failed to collect untracked file diff for ${file}: ${firstLine(result.stderr) || firstLine(result.stdout)}`);
+  }
+  return result.stdout;
 }
 
 async function loadReviewSchema(schemaPath) {
@@ -2598,7 +2726,11 @@ async function runReview(options) {
     Number.isFinite(options.maxDiffBytes) && options.maxDiffBytes > 0
       ? options.maxDiffBytes
       : DEFAULT_REVIEW_MAX_DIFF_BYTES;
-  const diffResult = await collectGitDiff({ cwd, base: options.base });
+  const diffResult = await collectGitDiff({
+    cwd,
+    base: options.base,
+    includeUntracked: options.includeUntracked
+  });
   const diffBytes = Buffer.byteLength(diffResult.diff, "utf8");
   if (!diffResult.diff.trim()) {
     return {
@@ -2614,6 +2746,8 @@ async function runReview(options) {
         ? `No changes found in diff ${options.base}...HEAD.`
         : "No uncommitted changes found to review.",
       diffCommand: diffResult.command,
+      includeUntracked: options.includeUntracked,
+      untrackedFiles: diffResult.untrackedFiles,
       diffBytes,
       maxDiffBytes
     };
@@ -2652,6 +2786,8 @@ async function runReview(options) {
     permissionMode: "plan",
     schemaPath,
     diffCommand: diffResult.command,
+    includeUntracked: options.includeUntracked,
+    untrackedFiles: diffResult.untrackedFiles,
     diffBytes,
     maxDiffBytes,
     command: invocation.command,

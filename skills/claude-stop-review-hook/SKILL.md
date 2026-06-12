@@ -7,18 +7,18 @@ description: Configure or explain the optional Codex Stop hook that can run a re
 
 Use this skill when the user wants Claude Code to review changes automatically when a Codex turn stops.
 
-The plugin bundles `hooks/hooks.json` with a `Stop` hook, but the hook helper is inert until explicitly enabled. Codex also requires non-managed hooks to be reviewed and trusted with `/hooks` before they run.
+The plugin bundles `hooks/hooks.json` with a `Stop` hook, but the hook helper is inert until explicitly configured with the plugin root and then enabled for review. Codex also requires non-managed hooks to be reviewed and trusted with `/hooks` before they run.
 
-Enable the hook in the shell before launching Codex:
-
-```bash
-export CLAUDE_COMPANION_STOP_REVIEW=1
-```
-
-If Codex invokes the bundled hook from a workspace other than this plugin root, also set:
+First point the bundled hook config at this plugin using an absolute path before launching Codex:
 
 ```bash
 export CLAUDE_COMPANION_PLUGIN_ROOT=/absolute/path/to/cc-plugin-codex
+```
+
+Then enable review in the shell before launching Codex:
+
+```bash
+export CLAUDE_COMPANION_STOP_REVIEW=1
 ```
 
 Or enable it per repository:
@@ -27,6 +27,8 @@ Or enable it per repository:
 mkdir -p .codex
 touch .codex/claude-stop-review.enabled
 ```
+
+The per-repository marker enables review after the hook helper is located; it does not replace `CLAUDE_COMPANION_PLUGIN_ROOT`.
 
 By default, the hook reports review findings without blocking Codex. To block on high or critical findings:
 

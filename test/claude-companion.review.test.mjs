@@ -21,8 +21,30 @@ async function makeFakeBin({ diff = "diff --git a/app.js b/app.js\n+buggy();\n" 
     path.join(binDir, "git"),
     [
       "#!/bin/sh",
+      "if [ -n \"$FAKE_GIT_COMMANDS_FILE\" ]; then printf '%s\\n' \"$@\" >> \"$FAKE_GIT_COMMANDS_FILE\"; fi",
+      "if [ \"$1\" = \"ls-files\" ]; then",
+      "  if [ \"$FAKE_GIT_UNTRACKED\" = \"1\" ]; then printf 'notes/new-file.js\\0'; fi",
+      "  if [ \"$FAKE_GIT_UNTRACKED\" = \"2\" ]; then printf 'notes/first.js\\0notes/second.js\\0'; fi",
+      "  exit 0",
+      "fi",
       "if [ \"$1\" = \"diff\" ]; then",
       "  if [ -n \"$FAKE_GIT_ARGS_FILE\" ]; then printf '%s\\n' \"$@\" > \"$FAKE_GIT_ARGS_FILE\"; fi",
+      "  if [ \"$FAKE_GIT_NO_HEAD\" = \"1\" ] && [ \"$3\" = \"HEAD\" ]; then",
+      "    echo \"fatal: ambiguous argument 'HEAD': unknown revision\" >&2",
+      "    exit 128",
+      "  fi",
+      "  if [ \"$5\" = \"/dev/null\" ]; then",
+      "    printf 'diff --git a/dev/null b/%s\\n+untracked content\\n' \"$6\"",
+      "    exit 1",
+      "  fi",
+      "  if [ \"$FAKE_GIT_NO_HEAD\" = \"1\" ] && [ \"$3\" = \"--cached\" ]; then",
+      "    printf 'diff --git a/new.js b/new.js\\n+staged();\\n'",
+      "    exit 0",
+      "  fi",
+      "  if [ \"$FAKE_GIT_NO_HEAD\" = \"1\" ] && [ -z \"$3\" ]; then",
+      "    printf 'diff --git a/new.js b/new.js\\n+unstaged();\\n'",
+      "    exit 0",
+      "  fi",
       `  printf '%s' ${JSON.stringify(diff)}`,
       "  exit 0",
       "fi",
@@ -127,6 +149,160 @@ test("review returns structured findings from fake Claude", async () => {
   ]);
   assert.match(await readFile(promptFile, "utf8"), /Review the diff from main\.\.\.HEAD and return structured output/);
   assert.match(await readFile(promptFile, "utf8"), /buggy/);
+});
+
+test("review default includes staged and unstaged tracked changes", async () => {
+  const binDir = await makeFakeBin();
+  const tempDir = await mkdtemp(path.join(tmpdir(), "claude-review-"));
+  const gitArgsFile = path.join(tempDir, "git-args.txt");
+
+  const result = await runCli(["review", "--json"], {
+    binDir,
+    env: {
+      FAKE_GIT_ARGS_FILE: gitArgsFile
+    }
+  });
+
+  assert.equal(result.exitCode, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.status, "completed");
+  assert.deepEqual(payload.diffCommand, ["git", "diff", "--no-ext-diff", "HEAD"]);
+  assert.deepEqual((await readFile(gitArgsFile, "utf8")).trim().split("\n"), [
+    "diff",
+    "--no-ext-diff",
+    "HEAD"
+  ]);
+});
+
+test("review falls back when HEAD is unavailable in a new repository", async () => {
+  const binDir = await makeFakeBin();
+  const tempDir = await mkdtemp(path.join(tmpdir(), "claude-review-"));
+  const commandsFile = path.join(tempDir, "git-commands.txt");
+  const promptFile = path.join(tempDir, "prompt.txt");
+
+  const result = await runCli(["review", "--json"], {
+    binDir,
+    env: {
+      FAKE_GIT_COMMANDS_FILE: commandsFile,
+      FAKE_GIT_NO_HEAD: "1",
+      FAKE_CLAUDE_PROMPT_FILE: promptFile
+    }
+  });
+
+  assert.equal(result.exitCode, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.status, "completed");
+  const commands = await readFile(commandsFile, "utf8");
+  assert.match(commands, /diff\n--no-ext-diff\nHEAD/);
+  assert.match(commands, /diff\n--no-ext-diff\n--cached/);
+  assert.match(commands, /diff\n--no-ext-diff\n$/);
+  const prompt = await readFile(promptFile, "utf8");
+  assert.match(prompt, /staged\(\)/);
+  assert.match(prompt, /unstaged\(\)/);
+});
+
+test("review sends a strict finding schema to Claude", async () => {
+  const binDir = await makeFakeBin();
+  const tempDir = await mkdtemp(path.join(tmpdir(), "claude-review-"));
+  const argsFile = path.join(tempDir, "claude-args.txt");
+
+  const result = await runCli(["review", "--base", "main", "--json"], {
+    binDir,
+    env: {
+      FAKE_CLAUDE_ARGS_FILE: argsFile
+    }
+  });
+
+  assert.equal(result.exitCode, 0, result.stderr);
+  const claudeArgs = (await readFile(argsFile, "utf8")).trim().split("\n");
+  const schema = JSON.parse(claudeArgs[4]);
+  const findingSchema = schema.properties.findings.items;
+  assert.equal(schema.additionalProperties, false);
+  assert.deepEqual(findingSchema.required, [
+    "title",
+    "severity",
+    "file",
+    "line",
+    "description",
+    "recommendation"
+  ]);
+  assert.deepEqual(findingSchema.properties.severity.enum, [
+    "critical",
+    "high",
+    "medium",
+    "low",
+    "info"
+  ]);
+  assert.deepEqual(findingSchema.properties.line.type, ["integer", "null"]);
+  assert.equal(findingSchema.additionalProperties, false);
+});
+
+test("review can explicitly include untracked files", async () => {
+  const binDir = await makeFakeBin({ diff: "diff --git a/app.js b/app.js\n+tracked();\n" });
+  const tempDir = await mkdtemp(path.join(tmpdir(), "claude-review-"));
+  const commandsFile = path.join(tempDir, "git-commands.txt");
+  const promptFile = path.join(tempDir, "prompt.txt");
+
+  const result = await runCli(["review", "--include-untracked", "--json"], {
+    binDir,
+    env: {
+      FAKE_GIT_COMMANDS_FILE: commandsFile,
+      FAKE_GIT_UNTRACKED: "1",
+      FAKE_CLAUDE_PROMPT_FILE: promptFile
+    }
+  });
+
+  assert.equal(result.exitCode, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.includeUntracked, true);
+  assert.deepEqual(payload.untrackedFiles, ["notes/new-file.js"]);
+  const commands = await readFile(commandsFile, "utf8");
+  assert.match(commands, /ls-files\n--others\n--exclude-standard\n-z/);
+  assert.match(commands, /diff\n--no-ext-diff\n--no-index\n--\n\/dev\/null\nnotes\/new-file\.js/);
+  assert.match(await readFile(promptFile, "utf8"), /untracked content/);
+});
+
+test("review includes untracked files with an explicit base when requested", async () => {
+  const binDir = await makeFakeBin({ diff: "diff --git a/app.js b/app.js\n+tracked();\n" });
+  const tempDir = await mkdtemp(path.join(tmpdir(), "claude-review-"));
+  const promptFile = path.join(tempDir, "prompt.txt");
+
+  const result = await runCli(["review", "--base", "main", "--include-untracked", "--json"], {
+    binDir,
+    env: {
+      FAKE_GIT_UNTRACKED: "1",
+      FAKE_CLAUDE_PROMPT_FILE: promptFile
+    }
+  });
+
+  assert.equal(result.exitCode, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.includeUntracked, true);
+  assert.deepEqual(payload.diffCommand, ["git", "diff", "--no-ext-diff", "main...HEAD"]);
+  assert.deepEqual(payload.untrackedFiles, ["notes/new-file.js"]);
+  assert.match(await readFile(promptFile, "utf8"), /tracked\(\)/);
+  assert.match(await readFile(promptFile, "utf8"), /untracked content/);
+});
+
+test("review separates multiple untracked-only diffs", async () => {
+  const binDir = await makeFakeBin({ diff: "" });
+  const tempDir = await mkdtemp(path.join(tmpdir(), "claude-review-"));
+  const promptFile = path.join(tempDir, "prompt.txt");
+
+  const result = await runCli(["review", "--include-untracked", "--json"], {
+    binDir,
+    env: {
+      FAKE_GIT_UNTRACKED: "2",
+      FAKE_CLAUDE_PROMPT_FILE: promptFile
+    }
+  });
+
+  assert.equal(result.exitCode, 0, result.stderr);
+  const prompt = await readFile(promptFile, "utf8");
+  assert.match(
+    prompt,
+    /b\/notes\/first\.js\n\+untracked content\n\ndiff --git a\/dev\/null b\/notes\/second\.js/
+  );
 });
 
 test("review supports adversarial prompt mode", async () => {

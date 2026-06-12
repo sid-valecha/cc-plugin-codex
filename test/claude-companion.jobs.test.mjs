@@ -124,6 +124,43 @@ test("background rescue completes and writes status, result, and logs", async ()
   assert.equal(await readFile(job.stderrPath, "utf8"), "");
 });
 
+test("concurrent background starts preserve every job record", async () => {
+  const binDir = await makeFakeClaudeBin();
+  const stateDir = await mkdtemp(path.join(tmpdir(), "claude-jobs-state-"));
+  const starts = await Promise.all(
+    Array.from({ length: 8 }, (_, index) =>
+      runCli(
+        [
+          "rescue",
+          "--prompt",
+          `Concurrent job ${index}`,
+          "--background",
+          "--state-dir",
+          stateDir,
+          "--json"
+        ],
+        {
+          binDir,
+          env: {
+            FAKE_CLAUDE_STREAM: "slow"
+          }
+        }
+      )
+    )
+  );
+
+  for (const start of starts) {
+    assert.equal(start.exitCode, 0, start.stderr);
+  }
+  const startedIds = starts.map((start) => JSON.parse(start.stdout).job.id);
+  const status = await runCli(["status", "--state-dir", stateDir, "--limit", "20", "--json"]);
+  assert.equal(status.exitCode, 0, status.stderr);
+  const payload = JSON.parse(status.stdout);
+  for (const jobId of startedIds) {
+    assert.ok(payload.jobs.some((job) => job.id === jobId), `missing job ${jobId}`);
+  }
+});
+
 test("status and result render rich completed job metadata and model usage", async () => {
   const binDir = await makeFakeClaudeBin();
   const stateDir = await mkdtemp(path.join(tmpdir(), "claude-jobs-state-"));
