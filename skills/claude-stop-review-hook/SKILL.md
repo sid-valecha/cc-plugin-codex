@@ -47,7 +47,7 @@ Model guidance:
 
 - Use `CLAUDE_COMPANION_STOP_REVIEW_MODEL=opus` for serious blocking gates or important merge-readiness checks.
 - Use `CLAUDE_COMPANION_STOP_REVIEW_EFFORT=low` only for smoke tests, cheap sanity checks, or explicitly low-effort requests.
-- Do not assume short aliases always map to the expected backend model. After real Claude calls, inspect and report actual model usage from JSON output when available.
+- Do not assume short Claude model names always map to the expected backend model. After real Claude calls, inspect and report actual model usage from JSON output when available.
 
 Manual smoke test:
 

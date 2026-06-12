@@ -172,7 +172,7 @@ test("status and result render rich completed job metadata and model usage", asy
       "Do this in the background",
       "--background",
       "--model",
-      "spark",
+      "haiku",
       "--effort",
       "low",
       "--session-id",

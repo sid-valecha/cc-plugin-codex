@@ -81,7 +81,7 @@ node scripts/claude-companion.mjs rescue --prompt "<task>" --json
 Useful options:
 
 - `--cwd <path>` to run Claude from a specific working directory.
-- `--model <model>` to choose a Claude model. The default is `sonnet`; `spark` maps to `haiku`.
+- `--model <model>` to choose a Claude model. The default is `sonnet`; use Claude model names or full Claude model IDs.
 - `--effort <level>` to pass Claude Code effort: `low`, `medium`, `high`, `xhigh`, or `max`.
 - `--plan` to use read-only `plan` permission mode.
 - `--write` to force Claude Code edits with `acceptEdits`, which is also the default for rescue.
@@ -103,7 +103,7 @@ Model guidance:
 
 - Use `--model opus` for serious rescue work, hard debugging, important edits, or decisions that need high confidence.
 - Use `--effort low` for smoke tests, cheap sanity checks, or explicitly low-effort requests.
-- Do not assume short aliases always map to the expected backend model. After real Claude calls, inspect and report actual model usage from JSON output when available.
+- Do not assume short Claude model names always map to the expected backend model. Live smoke tests showed `sonnet` and `opus` matching their requested families, but a `haiku` request initialized as Haiku and still reported `claude-sonnet-4-6` in actual usage. After real Claude calls, inspect and report actual model usage from JSON output when available.
 
 Permission guidance:
 

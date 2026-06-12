@@ -81,7 +81,7 @@ Pass criteria:
 ## 5. Low-Cost Real Claude Smokes
 
 Run only after explicit approval. Use `--effort low` and a throwaway fixture.
-Record actual `modelUsage`; do not assume short model aliases route to a
+Record actual `modelUsage`; do not assume short Claude model names route to a
 specific Claude model.
 
 Prepare a calculator fixture:

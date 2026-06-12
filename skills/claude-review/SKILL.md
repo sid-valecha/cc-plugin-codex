@@ -42,7 +42,7 @@ Useful options:
 
 - `--cwd <path>` to run from a specific repository.
 - `--base <ref>` to review `<ref>...HEAD`.
-- `--model <model>` to choose a Claude model. The default is `sonnet`; `spark` maps to `haiku`.
+- `--model <model>` to choose a Claude model. The default is `sonnet`; use Claude model names or full Claude model IDs.
 - `--effort <level>` to pass Claude Code effort: `low`, `medium`, `high`, `xhigh`, or `max`.
 - `--schema <path>` to override the review JSON schema.
 - `--max-diff-bytes <n>` to raise or lower the single-review diff limit. The default is 200000 bytes.
@@ -55,4 +55,4 @@ Model guidance:
 
 - Use `--model opus` for serious reviews, merge readiness, hook gate validation, or high-risk changes.
 - Use `--effort low` for smoke tests, cheap sanity checks, or explicitly low-effort requests.
-- Do not assume short aliases always map to the expected backend model. After real Claude calls, inspect and report actual model usage from JSON output when available.
+- Do not assume short Claude model names always map to the expected backend model. Live smoke tests showed `sonnet` and `opus` matching their requested families, but a `haiku` request initialized as Haiku and still reported `claude-sonnet-4-6` in actual usage. After real Claude calls, inspect and report actual model usage from JSON output when available.

@@ -74,6 +74,10 @@ Current completed checks include:
 - Claude Code has its own tool permission layer. If Claude asks for interactive
   tool approval during noninteractive mode, the plugin reports
   `permission_blocked`.
+- Model arguments are requests to Claude Code, not guaranteed backend routing
+  or billing labels. Current smoke tests show `sonnet` and `opus` matching
+  their requested families, while `haiku` can initialize as Haiku but report
+  Sonnet in actual `modelUsage`.
 - Public OpenAI Plugin Directory publishing should wait until public self-serve
   publishing exists. The current public install path is the Git-backed
   `marketplace` branch.

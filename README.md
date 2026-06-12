@@ -185,9 +185,9 @@ Permission proposals are written under plugin state and must be reviewed before 
 
 Use `node scripts/claude-companion.mjs review --adversarial` when you want the same structured review with a stricter prompt that looks harder for subtle failure modes. The compatibility alias `adversarial-review` still exists, but `claude-review` is the main review skill.
 
-Rescue defaults to model `sonnet`, standard noninteractive Claude mode, permission mode `acceptEdits`, and a new Claude session for each invocation. `plan` always uses read-only `plan` permission mode. `ui`/`design` use `acceptEdits` by default and switch to read-only critique with `--plan`. Add `--resume` to continue the latest completed or failed rescue session in the same resolved workspace. Add `--fresh` to make the new-session choice explicit. For serious rescue, planning, UI/design, or review work, prefer `--model opus`. Use `--plan` for read-only planning, `--model spark` to map to `haiku`, `--permission-mode auto` for Claude's auto permission classifier, and `--danger` only when `bypassPermissions` is explicitly intended. Use `--bare` only when you want strict isolation and have bare-compatible auth such as `claude setup-token`, `ANTHROPIC_API_KEY`, provider credentials, or `apiKeyHelper`. With `--background`, add `--wait` to keep the foreground command open until the job completes, fails, is cancelled, or reaches `--wait-timeout-ms` milliseconds. The default wait timeout is 300000ms.
+Rescue defaults to model `sonnet`, standard noninteractive Claude mode, permission mode `acceptEdits`, and a new Claude session for each invocation. `plan` always uses read-only `plan` permission mode. `ui`/`design` use `acceptEdits` by default and switch to read-only critique with `--plan`. Add `--resume` to continue the latest completed or failed rescue session in the same resolved workspace. Add `--fresh` to make the new-session choice explicit. For serious rescue, planning, UI/design, or review work, prefer `--model opus`. Use `--plan` for read-only planning, `--model haiku` to request Haiku, `--permission-mode auto` for Claude's auto permission classifier, and `--danger` only when `bypassPermissions` is explicitly intended. Use `--bare` only when you want strict isolation and have bare-compatible auth such as `claude setup-token`, `ANTHROPIC_API_KEY`, provider credentials, or `apiKeyHelper`. With `--background`, add `--wait` to keep the foreground command open until the job completes, fails, is cancelled, or reaches `--wait-timeout-ms` milliseconds. The default wait timeout is 300000ms.
 
-Use `--effort low`, `--effort medium`, `--effort high`, `--effort xhigh`, or `--effort max` to pass Claude Code's effort setting. Use `--effort low` for smoke tests, cheap sanity checks, and explicitly low-effort requests. Claude Code may route short model aliases differently than expected; when cost matters, prefer a full Claude Code model ID and inspect the raw `modelUsage` in `--json` output. After any real Claude call, report the actual model used from `raw.modelUsage` when available.
+Use `--effort low`, `--effort medium`, `--effort high`, `--effort xhigh`, or `--effort max` to pass Claude Code's effort setting. Use `--effort low` for smoke tests, cheap sanity checks, and explicitly low-effort requests. Claude Code may route short Claude model names differently than expected; when cost matters, prefer a full Claude Code model ID and inspect the raw `modelUsage` in `--json` output. Live smoke tests have shown `sonnet` routing to `claude-sonnet-4-6` and `opus` routing to `claude-opus-4-7`, while a `haiku` request initialized as Haiku but reported actual usage as `claude-sonnet-4-6`. After any real Claude call, report the actual model used from `raw.modelUsage` when available.
 
 ### Claude Tool Permissions
 
@@ -408,10 +408,11 @@ Sandbox and network prompts:
 - If a Codex host or automatic approval reviewer denies the Claude delegation command, treat that as a blocked Claude run. Do not count a local Codex fallback as a successful plugin smoke test unless the user explicitly chose to proceed without Claude.
 - If Claude Code blocks its own tool call during noninteractive rescue/UI work, the plugin reports `permission_blocked`. Rerun with a narrow `--allow-tool`, an approved `--allowed-tools-file`, or `--trust-local-dev` for trusted local repositories.
 
-Model aliases and usage:
+Model names and usage:
 
-- The plugin maps `--model spark` to `haiku` and otherwise passes model strings through to Claude Code.
-- Do not assume short aliases route to a specific backend model. Prefer full Claude model IDs when exact routing matters.
+- The plugin passes `--model` values through to Claude Code. Use Claude model names or full Claude model IDs, not Codex model names.
+- Do not assume short Claude model names route to a specific backend model. Prefer full Claude model IDs when exact routing matters.
+- Known live-routing observation: `sonnet` and `opus` matched their requested families in smoke tests, but `haiku` initialized as Haiku and still reported `claude-sonnet-4-6` in actual `modelUsage`.
 - After real Claude calls, inspect `modelUsage` in JSON output or stored job metadata when Claude reports it.
 
 Run a structured read-only review:

@@ -173,7 +173,6 @@ Deliverables:
 Defaults:
 
 - model: `sonnet`
-- `spark` alias: `haiku`
 - permission mode: `acceptEdits`
 - `--plan`: `plan`
 - `--danger`: `bypassPermissions`

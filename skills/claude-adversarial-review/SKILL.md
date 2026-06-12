@@ -48,4 +48,4 @@ Model guidance:
 
 - Use `--model opus` for serious adversarial review, merge readiness, or high-risk design validation.
 - Use `--effort low` only for smoke tests, cheap sanity checks, or explicitly low-effort requests.
-- Do not assume short aliases always map to the expected backend model. After real Claude calls, inspect and report actual model usage from JSON output when available.
+- Do not assume short Claude model names always map to the expected backend model. After real Claude calls, inspect and report actual model usage from JSON output when available.

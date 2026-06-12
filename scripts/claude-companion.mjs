@@ -73,7 +73,6 @@ const FIRST_RUN_PROFILE = {
 };
 
 const DEFAULT_RESCUE_MODEL = "sonnet";
-const MODEL_ALIASES = new Map([["spark", "haiku"]]);
 const DEFAULT_PERMISSION_MODE = "acceptEdits";
 const PLAN_PERMISSION_MODE = "plan";
 const WRITE_PERMISSION_MODE = "acceptEdits";
@@ -367,7 +366,7 @@ function usage() {
     "Options:",
     "  --json                  Emit machine-readable JSON.",
     "  --cwd <path>            Run from a specific working directory.",
-    "  --model <model>         Claude model alias or ID. Defaults to sonnet.",
+    "  --model <model>         Claude Code model name or ID. Defaults to sonnet.",
     "  --effort <level>        Claude effort level: low, medium, high, xhigh, or max.",
     "  --state-dir <path>      Override plugin job state directory.",
     "",
@@ -722,8 +721,7 @@ function renderHumanSetup(result) {
 }
 
 function normalizeModel(model) {
-  const rawModel = model?.trim() || DEFAULT_RESCUE_MODEL;
-  return MODEL_ALIASES.get(rawModel) ?? rawModel;
+  return model?.trim() || DEFAULT_RESCUE_MODEL;
 }
 
 function normalizeEffort(effort) {

@@ -118,7 +118,7 @@ test("review returns structured findings from fake Claude", async () => {
   const argsFile = path.join(tempDir, "claude-args.txt");
   const promptFile = path.join(tempDir, "prompt.txt");
 
-  const result = await runCli(["review", "--base", "main", "--model", "spark", "--json"], {
+  const result = await runCli(["review", "--base", "main", "--model", "haiku", "--json"], {
     binDir,
     env: {
       FAKE_CLAUDE_ARGS_FILE: argsFile,

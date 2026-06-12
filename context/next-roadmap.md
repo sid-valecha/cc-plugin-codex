@@ -34,6 +34,17 @@ Detailed commands and pass/fail criteria are tracked in
 
 ## RC Validation Log
 
+- 2026-06-12: Tiny model-routing smoke tests passed after explicit user
+  approval, using `rescue --plan --effort low --json` and prompts that asked
+  Claude to reply exactly `OK` without inspecting or modifying files.
+  - `--model sonnet` returned `OK` and reported actual usage as
+    `claude-sonnet-4-6`; reported cost was `$0.08939775`.
+  - `--model opus` returned `OK` and reported actual usage as
+    `claude-opus-4-7`; reported cost was `$0.22387375`.
+  - `--model haiku` returned `OK`; Claude Code initialized the session model
+    as `claude-haiku-4-5-20251001`, but the assistant message and
+    `modelUsage` reported `claude-sonnet-4-6`. Treat Haiku as requested, not
+    guaranteed, for Claude Code agent runs.
 - 2026-06-11: Serious Opus structured review validation passed against a
   throwaway git fixture at
   `/private/tmp/cc-plugin-codex-opus-review.mJOMK1`.

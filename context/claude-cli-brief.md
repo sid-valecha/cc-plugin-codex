@@ -62,9 +62,19 @@ Current plugin defaults:
 Current defaults:
 
 - default model: `sonnet`
-- `spark`: `haiku`
 
-Preserve explicit model IDs from the user.
+Pass explicit Claude model names or model IDs from the user through to Claude
+Code. Do not translate Codex model names into Claude model names.
+
+Live routing observation from 2026-06-12 smoke tests:
+
+- `--model sonnet` reported actual usage as `claude-sonnet-4-6`.
+- `--model opus` reported actual usage as `claude-opus-4-7`.
+- `--model haiku` initialized as `claude-haiku-4-5-20251001`, but the assistant
+  message and `modelUsage` reported `claude-sonnet-4-6`.
+
+Treat Haiku as a requested model family, not a guaranteed billing or backend
+routing outcome for Claude Code agent runs.
 
 ## Stdin Format
 

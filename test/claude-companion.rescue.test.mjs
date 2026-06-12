@@ -103,7 +103,7 @@ test("rescue invokes Claude with stream-json flags and user prompt", async () =>
       "--prompt",
       "Fix the failing test",
       "--model",
-      "spark",
+      "haiku",
       "--effort",
       "low",
       "--write",
